@@ -158,36 +158,20 @@
 
     /* translate button inline */
     .ru-btn {
-      display: inline-block; margin-left: 5px; padding: 1px 5px;
+      display: inline-block; margin-left: 5px; padding: 2px 7px;
       background: var(--navy-light); color: var(--gold); border: 1px solid var(--gold-dim);
       border-radius: 4px; font-size: 0.65rem; font-weight: 700; cursor: pointer;
       vertical-align: middle; white-space: nowrap;
       transition: background 0.2s;
-      position: relative;
+      -webkit-tap-highlight-color: transparent;
     }
-    .ru-btn:hover { background: var(--gold); color: var(--navy); }
+    .ru-btn:hover, .ru-btn.active { background: var(--gold); color: var(--navy); }
     .ru-btn.loading { opacity: 0.6; cursor: wait; }
-
-    .ru-tooltip {
-      display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
-      transform: translateX(-50%);
-      background: var(--navy); border: 1px solid var(--gold);
-      color: var(--gold-light); font-size: 0.75rem; padding: 5px 10px;
-      border-radius: 6px; white-space: nowrap; z-index: 999;
-      box-shadow: var(--shadow);
-      pointer-events: none;
-    }
-    .ru-tooltip::after {
-      content: ''; position: absolute; top: 100%; left: 50%;
-      transform: translateX(-50%);
-      border: 5px solid transparent; border-top-color: var(--gold);
-    }
-    .ru-btn:hover .ru-tooltip,
-    .ru-btn.active .ru-tooltip { display: block; }
+    /* All translations shown inline under the message — works on mobile & desktop */
     .inline-translation {
       display: none; background: rgba(240,180,41,0.12); border-left: 3px solid var(--gold);
       padding: 6px 10px; margin-top: 6px; border-radius: 0 6px 6px 0;
-      font-size: 0.82rem; color: var(--gold-light);
+      font-size: 0.82rem; color: var(--gold-light); line-height: 1.5;
     }
     .inline-translation.visible { display: block; }
 
@@ -329,8 +313,20 @@
         z-index: 200; box-shadow: var(--shadow);
       }
       .panel-toggle { display: flex !important; }
+      .panel-close-btn { display: flex !important; }
     }
     .panel-toggle { display: none; }
+    .panel-close-btn {
+      display: none; background: none; border: none; color: var(--text-dim);
+      font-size: 1.3rem; cursor: pointer; padding: 2px 6px; line-height: 1;
+    }
+    .panel-close-btn:hover { color: var(--gold); }
+    /* Mobile overlay backdrop */
+    #vocab-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 199;
+    }
+    #vocab-overlay.visible { display: block; }
 
     /* ===== SCROLLBAR global ===== */
     * { scrollbar-width: thin; scrollbar-color: var(--navy-light) transparent; }
@@ -416,10 +412,14 @@
     </div>
 
     <!-- VOCABULARY PANEL -->
+    <div id="vocab-overlay" onclick="toggleVocabPanel()"></div>
     <div id="vocab-panel">
       <div class="panel-header">
         <h3>📖 Словарь сессии</h3>
-        <button class="btn btn-ghost btn-sm" onclick="exportVocab()">↓ Экспорт</button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button class="btn btn-ghost btn-sm" onclick="exportVocab()">↓ Экспорт</button>
+          <button class="panel-close-btn" onclick="toggleVocabPanel()" title="Закрыть">×</button>
+        </div>
       </div>
 
       <div class="progress-pills" id="session-stats">
@@ -465,6 +465,68 @@ const state = {
 };
 
 const PHASES = ['welcome','topics','roleplay','corrections','vocab','challenge','score'];
+
+// ============================================================
+//  LOCALSTORAGE HISTORY
+// ============================================================
+const LS_KEY = 'speakup_session';
+
+function saveHistory() {
+  try {
+    const data = {
+      messagesHtml: document.getElementById('messages').innerHTML,
+      vocabHtml: document.getElementById('vocab-list').innerHTML,
+      scoreCardHtml: document.getElementById('score-card').outerHTML,
+      state: {
+        phase: state.phase, topic: state.topic, turnCount: state.turnCount,
+        maxTurns: state.maxTurns, errors: state.errors, vocabWords: state.vocabWords,
+        score: state.score, scriptIndex: state.scriptIndex, userTurns: state.userTurns,
+        autoTranslate: state.autoTranslate, demoMode: state.demoMode,
+      },
+      statWords: document.getElementById('stat-words').textContent,
+      statTurns: document.getElementById('stat-turns').textContent,
+      statErrors: document.getElementById('stat-errors').textContent,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+  } catch(e) {}
+}
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data.messagesHtml) return false;
+    Object.assign(state, data.state);
+    document.getElementById('messages').innerHTML = data.messagesHtml;
+    document.getElementById('vocab-list').innerHTML = data.vocabHtml;
+    // Restore score card
+    const sc = document.getElementById('score-card');
+    if (sc && data.scoreCardHtml) sc.outerHTML = data.scoreCardHtml;
+    document.getElementById('stat-words').textContent = data.statWords;
+    document.getElementById('stat-turns').textContent = data.statTurns;
+    document.getElementById('stat-errors').textContent = data.statErrors;
+    // Scroll to bottom
+    const msgs = document.getElementById('messages');
+    msgs.scrollTop = msgs.scrollHeight;
+    // Restore phase bar
+    for (let i = 1; i <= 6; i++) {
+      const el = document.getElementById('phase-' + i);
+      if (!el) continue;
+      el.classList.remove('active','done');
+      if (i < state.phase) el.classList.add('done');
+      if (i === state.phase) el.classList.add('active');
+    }
+    // Restore input state (disabled during topic selection)
+    const inputDisabled = state.phase === 1;
+    document.getElementById('user-input').disabled = inputDisabled;
+    document.getElementById('send-btn').disabled = inputDisabled;
+    document.getElementById('input-hint').textContent = inputDisabled
+      ? '👆 Выберите тему выше, чтобы начать'
+      : '💡 Отвечайте на английском — репетитор исправит ошибки';
+    return true;
+  } catch(e) { return false; }
+}
 
 // ============================================================
 //  DEMO SCRIPTS  —  3 full topic flows
@@ -675,39 +737,30 @@ function markdownToHtml(text) {
     .replace(/\n/g, '<br>');
 }
 
-function createRuButton(textToTranslate, inline = false) {
+function createRuButton(textToTranslate) {
   const id = 'ru-' + Math.random().toString(36).slice(2, 8);
-  if (inline) {
-    return `<span class="ru-btn" id="${id}" onclick="handleTranslateBtn('${id}', this, true)"
-      data-text="${encodeURIComponent(textToTranslate)}">RU
-      <span class="ru-tooltip">Загрузка…</span>
-    </span><div class="inline-translation" id="inline-${id}"></div>`;
-  }
-  return `<span class="ru-btn" id="${id}" onclick="handleTranslateBtn('${id}', this, false)"
-    data-text="${encodeURIComponent(textToTranslate)}">RU
-    <span class="ru-tooltip">Нажмите для перевода</span>
-  </span>`;
+  return `<span class="ru-btn" id="${id}" onclick="handleTranslateBtn('${id}', this)"
+    data-text="${encodeURIComponent(textToTranslate)}">RU</span
+  ><div class="inline-translation" id="inline-${id}"></div>`;
 }
 
-async function handleTranslateBtn(id, el, inline) {
+async function handleTranslateBtn(id, el) {
   const text = decodeURIComponent(el.getAttribute('data-text'));
-  const tooltip = el.querySelector('.ru-tooltip');
+  const inlineDiv = document.getElementById('inline-' + id);
+  // Toggle off if already showing
+  if (el.classList.contains('active')) {
+    el.classList.remove('active');
+    if (inlineDiv) inlineDiv.classList.remove('visible');
+    return;
+  }
   el.classList.add('loading');
-  if (tooltip) tooltip.textContent = 'Перевод…';
   const result = await translateText(text);
   el.classList.remove('loading');
-  if (tooltip) tooltip.textContent = result;
-  if (inline) {
-    const inlineDiv = document.getElementById('inline-' + id);
-    if (inlineDiv) {
-      inlineDiv.textContent = '🇷🇺 ' + result;
-      inlineDiv.classList.toggle('visible');
-    }
-    el.classList.toggle('active');
-  } else {
-    el.classList.add('active');
-    // Keep tooltip open
-    el.onmouseleave = () => { el.classList.remove('active'); };
+  el.classList.add('active');
+  if (inlineDiv) {
+    inlineDiv.textContent = '🇷🇺 ' + result;
+    inlineDiv.classList.add('visible');
+    saveHistory();
   }
 }
 
@@ -726,6 +779,7 @@ function appendMessage({ role, html, label, labelClass, time = true, extras = ''
     </div>`;
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
+  saveHistory();
   return div;
 }
 
@@ -803,6 +857,7 @@ function updateStats() {
   document.getElementById('stat-words').textContent = state.vocabWords.length + ' слов';
   document.getElementById('stat-turns').textContent = state.turnCount + ' реплик';
   document.getElementById('stat-errors').textContent = state.errors.length + ' ошибок';
+  saveHistory();
 }
 
 // ============================================================
@@ -850,7 +905,9 @@ function exportVocab() {
 
 function toggleVocabPanel() {
   const panel = document.getElementById('vocab-panel');
-  panel.classList.toggle('mobile-open');
+  const overlay = document.getElementById('vocab-overlay');
+  const isOpen = panel.classList.toggle('mobile-open');
+  overlay.classList.toggle('visible', isOpen);
 }
 
 // ============================================================
@@ -1155,6 +1212,7 @@ function resetSession() {
     errors: [], vocabWords: [], score: 0,
     scriptIndex: 0, userTurns: [],
   });
+  localStorage.removeItem(LS_KEY);
   document.getElementById('messages').innerHTML = '';
   document.getElementById('vocab-list').innerHTML = `<div class="vocab-empty"><div class="icon">📚</div><div>Новые слова появятся<br>здесь в процессе урока</div></div>`;
   document.getElementById('score-card').classList.remove('visible');
@@ -1184,7 +1242,9 @@ function handleKey(e) {
 //  INIT
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-  startSession();
+  if (!loadHistory()) {
+    startSession();
+  }
 });
 </script>
 </body>
