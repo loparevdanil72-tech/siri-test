@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0d1b2a" />
   <title>English Tutor — B1→C1 Spoken English</title>
   <style>
     /* ===== RESET & BASE ===== */
@@ -25,9 +28,13 @@
       --shadow:    0 4px 24px rgba(0,0,0,0.4);
     }
     html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--navy); color: var(--text); }
+    /* iOS momentum scrolling */
+    * { -webkit-overflow-scrolling: touch; }
 
     /* ===== LAYOUT ===== */
-    #app { display: flex; flex-direction: column; height: 100vh; }
+    /* Use dvh (dynamic viewport height) for iOS Safari — falls back to 100vh */
+    #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh;
+           padding-bottom: env(safe-area-inset-bottom); }
 
     header {
       background: var(--navy-mid);
@@ -199,6 +206,7 @@
     /* ===== INPUT AREA ===== */
     #input-area {
       padding: 16px 20px;
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
       background: var(--navy-mid);
       border-top: 1px solid rgba(240,180,41,0.2);
       flex-shrink: 0;
@@ -311,6 +319,8 @@
       #vocab-panel { display: none; }
       #vocab-panel.mobile-open {
         display: flex; position: fixed; right: 0; top: 0; bottom: 0;
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-right: env(safe-area-inset-right);
         z-index: 200; box-shadow: var(--shadow);
       }
       .panel-toggle { display: flex !important; }
