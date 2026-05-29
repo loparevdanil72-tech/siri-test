@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>English Tutor — B1→C1 Spoken English</title>
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy:      #0d1b2a;
+      --navy-mid:  #1a2e44;
+      --navy-light:#243b55;
+      --gold:      #f0b429;
+      --gold-light:#ffd166;
+      --gold-dim:  #b8860b;
+      --text:      #e8eaf0;
+      --text-dim:  #94a3b8;
+      --white:     #ffffff;
+      --error:     #ff6b6b;
+      --success:   #51cf66;
+      --bubble-user:  #1e3a5f;
+      --bubble-tutor: #1a2e44;
+      --radius:    12px;
+      --shadow:    0 4px 24px rgba(0,0,0,0.4);
+    }
+    html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--navy); color: var(--text); }
+
+    /* ===== LAYOUT ===== */
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    header {
+      background: var(--navy-mid);
+      border-bottom: 2px solid var(--gold);
+      padding: 12px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+      box-shadow: var(--shadow);
+      z-index: 100;
+    }
+    header .brand { display: flex; align-items: center; gap: 10px; }
+    header .brand-icon { font-size: 1.6rem; }
+    header .brand-text { line-height: 1.1; }
+    header .brand-text strong { color: var(--gold); font-size: 1.15rem; letter-spacing: 0.5px; }
+    header .brand-text span  { font-size: 0.72rem; color: var(--text-dim); display: block; }
+
+    header .header-controls { display: flex; align-items: center; gap: 10px; }
+
+    .main-area {
+      display: flex; flex: 1; overflow: hidden;
+    }
+
+    /* ===== CHAT COLUMN ===== */
+    #chat-col {
+      display: flex; flex-direction: column; flex: 1; min-width: 0;
+    }
+
+    .phase-bar {
+      background: var(--navy-light);
+      padding: 8px 20px;
+      display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid rgba(240,180,41,0.2);
+      flex-shrink: 0;
+      font-size: 0.8rem;
+    }
+    .phase-label { color: var(--text-dim); }
+    .phase-steps { display: flex; gap: 6px; }
+    .phase-step {
+      padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
+      background: var(--navy-mid); color: var(--text-dim); cursor: default;
+      transition: background 0.3s, color 0.3s;
+    }
+    .phase-step.active { background: var(--gold); color: var(--navy); }
+    .phase-step.done   { background: var(--navy-light); color: var(--gold); border: 1px solid var(--gold-dim); }
+
+    .translate-all-bar {
+      background: var(--navy);
+      padding: 6px 20px;
+      display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      flex-shrink: 0;
+    }
+    .translate-all-bar label { font-size: 0.8rem; color: var(--text-dim); cursor: pointer; user-select: none; }
+    .toggle-switch {
+      position: relative; display: inline-block; width: 40px; height: 22px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: var(--navy-light); border-radius: 22px;
+      transition: 0.3s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute; height: 16px; width: 16px;
+      left: 3px; bottom: 3px;
+      background: var(--text-dim); border-radius: 50%;
+      transition: 0.3s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: var(--gold); }
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(18px); background: var(--navy);
+    }
+
+    /* ===== MESSAGES ===== */
+    #messages {
+      flex: 1; overflow-y: auto; padding: 20px;
+      scroll-behavior: smooth;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    #messages::-webkit-scrollbar { width: 6px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--navy-light); border-radius: 3px; }
+
+    .msg { display: flex; gap: 10px; animation: slideIn 0.3s ease; }
+    .msg.user { flex-direction: row-reverse; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    .avatar {
+      width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; font-weight: 700;
+    }
+    .msg.tutor .avatar { background: var(--gold); color: var(--navy); }
+    .msg.user  .avatar { background: var(--navy-light); color: var(--gold); border: 2px solid var(--gold-dim); }
+    .msg.system .avatar { background: var(--navy-light); color: var(--text-dim); }
+
+    .bubble-wrap { display: flex; flex-direction: column; max-width: 75%; }
+    .msg.user .bubble-wrap { align-items: flex-end; }
+
+    .bubble {
+      padding: 12px 16px; border-radius: var(--radius);
+      font-size: 0.92rem; line-height: 1.6;
+      position: relative;
+      word-wrap: break-word;
+    }
+    .msg.tutor  .bubble { background: var(--bubble-tutor); border: 1px solid rgba(240,180,41,0.15); border-top-left-radius: 2px; }
+    .msg.user   .bubble { background: var(--bubble-user);  border: 1px solid rgba(100,149,237,0.2); border-top-right-radius: 2px; }
+    .msg.system .bubble { background: rgba(240,180,41,0.1); border: 1px solid rgba(240,180,41,0.25); color: var(--gold-light); font-style: italic; font-size: 0.85rem; }
+    .msg.correction .bubble { background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.3); }
+    .msg.vocab .bubble { background: rgba(81,207,102,0.08); border: 1px solid rgba(81,207,102,0.25); }
+    .msg.challenge .bubble { background: rgba(240,180,41,0.08); border: 1px solid var(--gold-dim); }
+    .msg.score .bubble { background: var(--navy-mid); border: 2px solid var(--gold); text-align: center; }
+
+    .bubble-time { font-size: 0.68rem; color: var(--text-dim); margin-top: 4px; padding: 0 4px; }
+    .msg.user .bubble-time { text-align: right; }
+
+    /* translate button inline */
+    .ru-btn {
+      display: inline-block; margin-left: 5px; padding: 1px 5px;
+      background: var(--navy-light); color: var(--gold); border: 1px solid var(--gold-dim);
+      border-radius: 4px; font-size: 0.65rem; font-weight: 700; cursor: pointer;
+      vertical-align: middle; white-space: nowrap;
+      transition: background 0.2s;
+      position: relative;
+    }
+    .ru-btn:hover { background: var(--gold); color: var(--navy); }
+    .ru-btn.loading { opacity: 0.6; cursor: wait; }
+
+    .ru-tooltip {
+      display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+      transform: translateX(-50%);
+      background: var(--navy); border: 1px solid var(--gold);
+      color: var(--gold-light); font-size: 0.75rem; padding: 5px 10px;
+      border-radius: 6px; white-space: nowrap; z-index: 999;
+      box-shadow: var(--shadow);
+      pointer-events: none;
+    }
+    .ru-tooltip::after {
+      content: ''; position: absolute; top: 100%; left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent; border-top-color: var(--gold);
+    }
+    .ru-btn:hover .ru-tooltip,
+    .ru-btn.active .ru-tooltip { display: block; }
+    .inline-translation {
+      display: none; background: rgba(240,180,41,0.12); border-left: 3px solid var(--gold);
+      padding: 6px 10px; margin-top: 6px; border-radius: 0 6px 6px 0;
+      font-size: 0.82rem; color: var(--gold-light);
+    }
+    .inline-translation.visible { display: block; }
+
+    /* phase-specific message decorators */
+    .msg-label {
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; margin-bottom: 4px; color: var(--text-dim);
+    }
+    .correction-label { color: var(--error) !important; }
+    .vocab-label { color: var(--success) !important; }
+    .challenge-label { color: var(--gold) !important; }
+    .score-label { color: var(--gold) !important; }
+
+    /* typing indicator */
+    .typing-bubble { padding: 12px 16px; background: var(--bubble-tutor); border-radius: var(--radius); display: inline-flex; gap: 5px; }
+    .typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); animation: bounce 1.2s infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+
+    /* ===== INPUT AREA ===== */
+    #input-area {
+      padding: 16px 20px;
+      background: var(--navy-mid);
+      border-top: 1px solid rgba(240,180,41,0.2);
+      flex-shrink: 0;
+    }
+    .input-row { display: flex; gap: 10px; align-items: flex-end; }
+    #user-input {
+      flex: 1; background: var(--navy-light); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius); padding: 12px 16px;
+      color: var(--text); font-size: 0.92rem; resize: none; min-height: 48px; max-height: 140px;
+      outline: none; transition: border-color 0.2s; font-family: inherit;
+    }
+    #user-input:focus { border-color: var(--gold); }
+    #user-input::placeholder { color: var(--text-dim); }
+
+    .btn {
+      padding: 10px 18px; border-radius: var(--radius); border: none; cursor: pointer;
+      font-weight: 600; font-size: 0.88rem; transition: all 0.2s; white-space: nowrap;
+    }
+    .btn-primary { background: var(--gold); color: var(--navy); }
+    .btn-primary:hover { background: var(--gold-light); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid rgba(255,255,255,0.12); }
+    .btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+    .btn-sm { padding: 6px 12px; font-size: 0.78rem; }
+    .btn-danger { background: transparent; color: var(--error); border: 1px solid rgba(255,107,107,0.3); }
+    .btn-danger:hover { background: rgba(255,107,107,0.1); }
+
+    #send-btn { align-self: flex-end; }
+    .input-hint { font-size: 0.72rem; color: var(--text-dim); margin-top: 6px; text-align: center; }
+
+    /* quick replies */
+    #quick-replies { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .qr-btn {
+      padding: 6px 14px; border-radius: 20px; font-size: 0.8rem;
+      background: var(--navy-light); color: var(--text); border: 1px solid rgba(240,180,41,0.3);
+      cursor: pointer; transition: all 0.2s;
+    }
+    .qr-btn:hover { background: var(--gold); color: var(--navy); border-color: var(--gold); }
+
+    /* ===== VOCABULARY PANEL ===== */
+    #vocab-panel {
+      width: 300px; flex-shrink: 0;
+      background: var(--navy-mid);
+      border-left: 1px solid rgba(240,180,41,0.2);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 14px 18px; border-bottom: 1px solid rgba(240,180,41,0.2);
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--navy-light);
+    }
+    .panel-header h3 { font-size: 0.9rem; color: var(--gold); display: flex; align-items: center; gap: 6px; }
+    #vocab-list {
+      flex: 1; overflow-y: auto; padding: 14px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    #vocab-list::-webkit-scrollbar { width: 4px; }
+    #vocab-list::-webkit-scrollbar-thumb { background: var(--navy-light); border-radius: 2px; }
+
+    .vocab-card {
+      background: var(--navy); border: 1px solid rgba(240,180,41,0.15);
+      border-radius: 8px; padding: 10px 12px;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .vocab-card .word { font-weight: 700; color: var(--gold-light); font-size: 0.9rem; }
+    .vocab-card .word-meta { font-size: 0.72rem; color: var(--text-dim); margin-top: 1px; }
+    .vocab-card .word-example { font-size: 0.78rem; color: var(--text); margin-top: 5px; font-style: italic; opacity: 0.85; }
+    .vocab-card .word-translation { font-size: 0.78rem; color: var(--gold); margin-top: 4px; display: none; }
+    .vocab-card .word-translation.visible { display: block; }
+    .vocab-card-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+    .vocab-empty { text-align: center; color: var(--text-dim); font-size: 0.82rem; padding: 30px 10px; }
+    .vocab-empty .icon { font-size: 2rem; margin-bottom: 8px; }
+
+    .score-card {
+      background: var(--navy); border: 1px solid var(--gold);
+      border-radius: 8px; padding: 14px 16px; text-align: center;
+      display: none;
+    }
+    .score-card.visible { display: block; }
+    .score-big { font-size: 2.5rem; font-weight: 900; color: var(--gold); line-height: 1; }
+    .score-label-sm { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 4px; }
+    .score-bar { height: 6px; background: var(--navy-light); border-radius: 3px; margin: 10px 0; overflow: hidden; }
+    .score-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); border-radius: 3px; transition: width 1s ease; }
+
+    /* ===== TOPIC SELECTION ===== */
+    .topic-grid { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+    .topic-card {
+      background: var(--navy-light); border: 1px solid rgba(240,180,41,0.25);
+      border-radius: var(--radius); padding: 12px 16px; cursor: pointer;
+      transition: all 0.2s; display: flex; align-items: center; gap: 12px;
+    }
+    .topic-card:hover { border-color: var(--gold); background: rgba(240,180,41,0.08); transform: translateX(3px); }
+    .topic-card .t-icon { font-size: 1.5rem; flex-shrink: 0; }
+    .topic-card .t-info { flex: 1; }
+    .topic-card .t-title { font-weight: 600; font-size: 0.9rem; color: var(--gold-light); }
+    .topic-card .t-desc  { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+    .topic-card .t-level { font-size: 0.68rem; padding: 2px 7px; border-radius: 10px; background: var(--navy); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.1); }
+
+    /* ===== SCORE STARS ===== */
+    .stars { display: flex; gap: 3px; justify-content: center; margin: 8px 0; }
+    .star { font-size: 1.2rem; transition: all 0.3s; }
+    .star.filled { color: var(--gold); }
+    .star.empty  { color: var(--navy-light); }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+      #vocab-panel { display: none; }
+      #vocab-panel.mobile-open {
+        display: flex; position: fixed; right: 0; top: 0; bottom: 0;
+        z-index: 200; box-shadow: var(--shadow);
+      }
+      .panel-toggle { display: flex !important; }
+    }
+    .panel-toggle { display: none; }
+
+    /* ===== SCROLLBAR global ===== */
+    * { scrollbar-width: thin; scrollbar-color: var(--navy-light) transparent; }
+
+    /* ===== PROGRESS TRACKER ===== */
+    .progress-pills { display: flex; gap: 4px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .progress-pill {
+      font-size: 0.68rem; padding: 2px 8px; border-radius: 10px;
+      background: var(--navy); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.08);
+    }
+    .progress-pill.done { background: rgba(81,207,102,0.15); color: var(--success); border-color: rgba(81,207,102,0.3); }
+
+    /* ===== LOADING OVERLAY ===== */
+    .loading-inline { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 0.8rem; padding: 4px 0; }
+    .spin { animation: spin 1s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== WORD HIGHLIGHT ===== */
+    .highlight-word {
+      background: rgba(240,180,41,0.15); border-radius: 3px;
+      padding: 0 2px; border-bottom: 1px dashed var(--gold-dim);
+      cursor: help;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">🎓</div>
+      <div class="brand-text">
+        <strong>SpeakUp English</strong>
+        <span>Персональный репетитор · B1 → C1</span>
+      </div>
+    </div>
+    <div class="header-controls">
+      <button class="btn btn-ghost btn-sm panel-toggle" onclick="toggleVocabPanel()">📖 Словарь</button>
+      <button class="btn btn-ghost btn-sm" onclick="resetSession()" title="Начать заново">↺ Заново</button>
+    </div>
+  </header>
+
+  <div class="main-area">
+    <!-- CHAT COLUMN -->
+    <div id="chat-col">
+      <!-- PHASE BAR -->
+      <div class="phase-bar">
+        <span class="phase-label">Этап:</span>
+        <div class="phase-steps">
+          <div class="phase-step active" id="phase-1">Выбор темы</div>
+          <div class="phase-step" id="phase-2">Диалог</div>
+          <div class="phase-step" id="phase-3">Разбор ошибок</div>
+          <div class="phase-step" id="phase-4">Новые слова</div>
+          <div class="phase-step" id="phase-5">Задание</div>
+          <div class="phase-step" id="phase-6">Оценка</div>
+        </div>
+      </div>
+
+      <!-- TRANSLATE ALL BAR -->
+      <div class="translate-all-bar">
+        <label class="toggle-switch" title="Автоперевод всех сообщений">
+          <input type="checkbox" id="auto-translate-toggle" onchange="toggleAutoTranslate(this.checked)" />
+          <span class="toggle-slider"></span>
+        </label>
+        <label for="auto-translate-toggle">Переводить всё автоматически</label>
+      </div>
+
+      <!-- MESSAGES -->
+      <div id="messages"></div>
+
+      <!-- INPUT -->
+      <div id="input-area">
+        <div id="quick-replies"></div>
+        <div class="input-row">
+          <textarea id="user-input" placeholder="Введите ваш ответ на английском..." rows="1"
+            onkeydown="handleKey(event)" oninput="autoGrow(this)"></textarea>
+          <button class="btn btn-primary" id="send-btn" onclick="sendMessage()">
+            Отправить ↵
+          </button>
+        </div>
+        <div class="input-hint" id="input-hint">💡 Пишите на английском — репетитор исправит ошибки</div>
+      </div>
+    </div>
+
+    <!-- VOCABULARY PANEL -->
+    <div id="vocab-panel">
+      <div class="panel-header">
+        <h3>📖 Словарь сессии</h3>
+        <button class="btn btn-ghost btn-sm" onclick="exportVocab()">↓ Экспорт</button>
+      </div>
+
+      <div class="progress-pills" id="session-stats">
+        <span class="progress-pill" id="stat-words">0 слов</span>
+        <span class="progress-pill" id="stat-turns">0 реплик</span>
+        <span class="progress-pill" id="stat-errors">0 ошибок</span>
+      </div>
+
+      <div id="score-card" class="score-card">
+        <div class="score-label-sm">Оценка сессии</div>
+        <div class="score-big" id="final-score">—</div>
+        <div class="stars" id="star-display"></div>
+        <div class="score-bar"><div class="score-fill" id="score-fill" style="width:0%"></div></div>
+        <div id="score-feedback" style="font-size:0.8rem;color:var(--text-dim);margin-top:6px;"></div>
+      </div>
+
+      <div id="vocab-list">
+        <div class="vocab-empty">
+          <div class="icon">📚</div>
+          <div>Новые слова появятся<br>здесь в процессе урока</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+const state = {
+  phase: 0,            // 0=welcome, 1=topics, 2=roleplay, 3=corrections, 4=vocab, 5=challenge, 6=score
+  topic: null,
+  turnCount: 0,
+  maxTurns: 6,
+  errors: [],
+  vocabWords: [],
+  score: 0,
+  autoTranslate: false,
+  scriptIndex: 0,
+  userTurns: [],
+  demoMode: true,
+};
+
+const PHASES = ['welcome','topics','roleplay','corrections','vocab','challenge','score'];
+
+// ============================================================
+//  DEMO SCRIPTS  —  3 full topic flows
+// ============================================================
+const TOPICS = [
+  {
+    id: 'interview',
+    icon: '💼',
+    title: 'Job Interview',
+    desc: 'Practice professional English for job interviews',
+    level: 'B2–C1',
+  },
+  {
+    id: 'travel',
+    icon: '✈️',
+    title: 'Travel & Airport',
+    desc: 'Navigating airports, hotels, and travel situations',
+    level: 'B1–B2',
+  },
+  {
+    id: 'restaurant',
+    icon: '🍽️',
+    title: 'Restaurant & Food',
+    desc: 'Ordering food, making reservations, complaints',
+    level: 'B1–B2',
+  },
+];
+
+const DEMO_SCRIPTS = {
+  interview: {
+    intro: `Welcome! Today we'll practice for a **job interview** in English. This is fantastic for your career! 🎯\n\nI'll be the interviewer — you are applying for a **Marketing Manager** position at an international company.\n\nRemember: speak confidently, use complex sentences, and avoid filler words. Let's begin!\n\n*"Please, take a seat. Tell me — can you walk me through your professional background?"*`,
+    turns: [
+      {
+        trigger_contains: null,
+        tutor: `Interesting! I'd love to hear more about that. What would you say is your **greatest professional achievement** so far? Try to use the STAR method — Situation, Task, Action, Result.`,
+        hint: 'Tell me about a specific achievement'
+      },
+      {
+        trigger_contains: null,
+        tutor: `That's a compelling example. Now, every candidate has weaknesses. What's yours — and more importantly, what are you doing to improve it?\n\n*Don't say "I work too hard" — we've heard that one before!* 😄`,
+        hint: 'Mention a real weakness and how you\'re working on it'
+      },
+      {
+        trigger_contains: null,
+        tutor: `Excellent self-awareness! Let me give you a tricky one now.\n\n*"Imagine your team disagrees with your marketing strategy. Two colleagues are quite vocal about it. How do you handle that situation?"*\n\nThink carefully — this tests your leadership and communication skills.`,
+        hint: 'Describe how you handle conflict professionally'
+      },
+      {
+        trigger_contains: null,
+        tutor: `That shows maturity! One more — this is a question many candidates struggle with:\n\n*"Where do you see yourself in five years? How does this role fit into that vision?"*`,
+        hint: 'Share your career goals and connect them to this role'
+      },
+      {
+        trigger_contains: null,
+        tutor: `Wonderful! You've done a great job so far. Last question: *"Do you have any questions for us?"*\n\nRemember — asking good questions shows genuine interest. Ask at least two!`,
+        hint: 'Ask the interviewer 2 meaningful questions'
+      },
+    ],
+    corrections: [
+      { original: 'I have worked in marketing since 5 years', fixed: 'I have worked in marketing **for** 5 years', ru_note: '«Since» используется с точной датой/моментом (since 2019), а «for» — с продолжительностью (for 5 years).' },
+      { original: 'My team we achieved the target', fixed: '**My team achieved** the target', ru_note: 'Лишнее местоимение «we» после подлежащего «my team». В английском нельзя удвоить подлежащее.' },
+      { original: 'I am agree with you', fixed: 'I **agree** with you', ru_note: '«Agree» — обычный глагол, не прилагательное. Не нужен глагол «to be».' },
+    ],
+    vocab: [
+      { word: 'to spearhead', pos: 'verb', example: 'I spearheaded the rebranding campaign that increased sales by 40%.', ru: 'возглавлять, быть инициатором' },
+      { word: 'stakeholder', pos: 'noun', example: 'We need to align all stakeholders before launching the product.', ru: 'заинтересованная сторона' },
+      { word: 'cross-functional', pos: 'adjective', example: 'I enjoy working in cross-functional teams across different departments.', ru: 'межфункциональный, кросс-функциональный' },
+    ],
+    challenge: {
+      prompt: `Rephrase this sentence to sound more **C1 professional**:\n\n*"I think I am good at my job and people like working with me."*`,
+      example_answer: `"I would describe myself as a results-driven professional who consistently fosters collaborative relationships and delivers measurable outcomes."`,
+    },
+    score: { value: 8, feedback: 'Отличная работа! Вы уверенно держались в роли кандидата. Над артиклями ещё стоит поработать.' },
+  },
+
+  travel: {
+    intro: `Let's practice travel English! ✈️\n\nScenario: You've just landed at **London Heathrow**. Your luggage hasn't arrived, and you need to get to your hotel. I'll play different characters: airport staff, taxi driver, and hotel receptionist.\n\nReady? Let's start at the baggage claim desk.\n\n*"Good afternoon! How can I help you today?"*`,
+    turns: [
+      {
+        trigger_contains: null,
+        tutor: `Oh, I'm so sorry to hear that! Could you please fill in this form?\n\nI need: your **flight number**, the **description of your bag**, and a **contact address** where we can send it.\n\nBy the way — is this your first time visiting London?`,
+        hint: 'Report missing luggage with details'
+      },
+      {
+        trigger_contains: null,
+        tutor: `We'll do our best to locate it within 24 hours. Here's your reference number: BA-7742.\n\n*[Now you're outside, looking for a taxi]*\n\n*Taxi driver:* "Where to, mate? And would you prefer the motorway or the scenic route through the city?"`,
+        hint: 'Tell the driver your destination and ask about the fare'
+      },
+      {
+        trigger_contains: null,
+        tutor: `*"The motorway's quicker — about 45 minutes. But the city route? You'll see Big Ben, the Thames… classic London! Your call."*\n\nAlso — do you want to pay cash or card? And shall I help with your carry-on?`,
+        hint: 'Make a choice and ask about the price difference'
+      },
+      {
+        trigger_contains: null,
+        tutor: `*[Arriving at the hotel — receptionist speaking]*\n\n"Welcome to The Crown Hotel! Do you have a reservation with us? And I should let you know — we have a slight issue. Your room won't be ready for another hour. We do apologise. Can I offer you a complimentary drink in the bar?"`,
+        hint: 'Check in and respond to the room delay situation'
+      },
+      {
+        trigger_contains: null,
+        tutor: `"Of course! I've made a note. Oh, and one more thing — breakfast is served from 7 to 10 AM in the dining room on the second floor. Do you have any dietary requirements I should note for tomorrow?"\n\n*This is your last chance to ask questions or request anything!*`,
+        hint: 'Make any final requests or ask about hotel amenities'
+      },
+    ],
+    corrections: [
+      { original: 'My luggage is lost since yesterday', fixed: 'My luggage **has been** lost **since** yesterday', ru_note: 'Для действия, начавшегося в прошлом и продолжающегося сейчас, нужен Present Perfect Continuous или Present Perfect.' },
+      { original: 'I want to go to Piccadilly Circus, please take me there', fixed: 'Could you take me to Piccadilly Circus, please?', ru_note: 'Прямое «I want» звучит грубо. В английском вежливость строится через «Could you…» или «I\'d like to…».' },
+      { original: 'The hotel is very noise', fixed: 'The hotel is very **noisy**', ru_note: '«Noise» — существительное. Прилагательное — «noisy».' },
+    ],
+    vocab: [
+      { word: 'to lodge a complaint', pos: 'phrase', example: 'I need to lodge a complaint about my missing luggage.', ru: 'подать жалобу' },
+      { word: 'complimentary', pos: 'adjective', example: 'The hotel offered complimentary breakfast to apologise for the inconvenience.', ru: 'бесплатный, предоставленный в подарок' },
+      { word: 'in transit', pos: 'phrase', example: 'Your bag is currently in transit and should arrive within 24 hours.', ru: 'в пути, при перевозке' },
+    ],
+    challenge: {
+      prompt: `Rephrase this sentence to sound more **C1 polished**:\n\n*"I am angry because my room is not ready and nobody told me."*`,
+      example_answer: `"I must say I'm somewhat frustrated — had I been informed in advance about the delay, I could have made alternative arrangements."`,
+    },
+    score: { value: 7, feedback: 'Очень хорошо! Вы справились с нестандартными ситуациями. Поработайте над вежливыми конструкциями в речи.' },
+  },
+
+  restaurant: {
+    intro: `Excellent choice! 🍽️ Let's practice restaurant English.\n\nScenario: You're at **La Bella Vita**, an upscale Italian restaurant in London. It's your first visit and you want to impress a business client.\n\nI'm your waiter. The evening has just begun!\n\n*"Good evening, and welcome to La Bella Vita! Do you have a reservation, or are you looking for a table for this evening?"*`,
+    turns: [
+      {
+        trigger_contains: null,
+        tutor: `*"Wonderful! Right this way, please. Here are your menus. Tonight's specials are: seared sea bass with a lemon beurre blanc, and truffle risotto.*\n\n*Can I start you off with something to drink? We have a lovely Barolo if you're interested in red wine."*`,
+        hint: 'Order drinks and ask about the specials or make a special request'
+      },
+      {
+        trigger_contains: null,
+        tutor: `*"Excellent choice! Are you ready to order, or shall I give you a few more minutes?"*\n\n*[Your client whispers that they're vegetarian — you forgot to mention this when booking]*\n\nHow do you handle this gracefully and ask the waiter about vegetarian options?`,
+        hint: 'Inform the waiter about dietary requirements politely'
+      },
+      {
+        trigger_contains: null,
+        tutor: `*"Not to worry at all! We have several wonderful vegetarian options. The wild mushroom tagliatelle is particularly popular, and the burrata with heritage tomatoes is divine as a starter.*\n\n*Now, the truffle risotto is also vegetarian — would that interest your guest?"*`,
+        hint: 'Order for both yourself and your client'
+      },
+      {
+        trigger_contains: null,
+        tutor: `*[The food arrives, but there's a problem: your client's dish is cold and the portion looks smaller than expected]*\n\n*Waiter: "Is everything to your satisfaction?"*\n\nHow do you raise this issue politely without embarrassing your client?`,
+        hint: 'Complain politely about the food issue'
+      },
+      {
+        trigger_contains: null,
+        tutor: `*"I sincerely apologise for that. I'll have a fresh dish prepared immediately, and of course we'll remove it from the bill.*\n\n*[After a lovely meal, the bill arrives — and there's an extra charge you don't recognise]*\n\nHow do you query this on the bill?`,
+        hint: 'Question an unexpected charge on the bill'
+      },
+    ],
+    corrections: [
+      { original: 'I want to reserve a table for two persons', fixed: 'I\'d like to reserve a table **for two**', ru_note: 'В английском говорят «for two» (не «two persons»). «Persons» звучит официально и необычно в разговорной речи.' },
+      { original: 'This food is not enough hot', fixed: 'This food is **not hot enough**', ru_note: '«Enough» после прилагательного: «hot enough», «big enough» — но НЕ «enough hot».' },
+      { original: 'Can you explain me the bill?', fixed: 'Can you **explain** the bill **to me**?', ru_note: '«Explain» не принимает косвенное дополнение напрямую. Нужен предлог «to»: explain something to someone.' },
+    ],
+    vocab: [
+      { word: 'to query', pos: 'verb', example: 'I\'d like to query this charge on the bill — I don\'t recognise it.', ru: 'поставить под сомнение, уточнить' },
+      { word: 'to the satisfaction of', pos: 'phrase', example: 'We want everything to be to your complete satisfaction.', ru: 'к чьему-либо удовлетворению / по чьему-либо вкусу' },
+      { word: 'on the house', pos: 'idiom', example: 'The manager offered us dessert on the house to apologise for the wait.', ru: 'за счёт заведения' },
+    ],
+    challenge: {
+      prompt: `Rephrase this sentence to sound more **C1 sophisticated**:\n\n*"I think the bill is wrong. There is something extra here that I didn't order."*`,
+      example_answer: `"I believe there may be a discrepancy on the bill — there appears to be a charge here that I can't account for. Could you clarify that for me?"`,
+    },
+    score: { value: 9, feedback: 'Превосходно! Вы мастерски справились с деликатными ситуациями. Ваш уровень вежливости в речи значительно вырос.' },
+  },
+};
+
+// ============================================================
+//  TRANSLATION  (MyMemory API)
+// ============================================================
+const translationCache = {};
+
+async function translateText(text) {
+  const clean = text.replace(/\*\*/g, '').replace(/\*/g, '').trim().substring(0, 500);
+  if (translationCache[clean]) return translationCache[clean];
+  try {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean)}&langpair=en|ru`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    const result = data.responseData?.translatedText || 'Перевод недоступен';
+    translationCache[clean] = result;
+    return result;
+  } catch {
+    return 'Ошибка перевода';
+  }
+}
+
+// ============================================================
+//  AUTO-GROW TEXTAREA
+// ============================================================
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
+// ============================================================
+//  RENDER HELPERS
+// ============================================================
+function now() {
+  return new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function markdownToHtml(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+function createRuButton(textToTranslate, inline = false) {
+  const id = 'ru-' + Math.random().toString(36).slice(2, 8);
+  if (inline) {
+    return `<span class="ru-btn" id="${id}" onclick="handleTranslateBtn('${id}', this, true)"
+      data-text="${encodeURIComponent(textToTranslate)}">RU
+      <span class="ru-tooltip">Загрузка…</span>
+    </span><div class="inline-translation" id="inline-${id}"></div>`;
+  }
+  return `<span class="ru-btn" id="${id}" onclick="handleTranslateBtn('${id}', this, false)"
+    data-text="${encodeURIComponent(textToTranslate)}">RU
+    <span class="ru-tooltip">Нажмите для перевода</span>
+  </span>`;
+}
+
+async function handleTranslateBtn(id, el, inline) {
+  const text = decodeURIComponent(el.getAttribute('data-text'));
+  const tooltip = el.querySelector('.ru-tooltip');
+  el.classList.add('loading');
+  if (tooltip) tooltip.textContent = 'Перевод…';
+  const result = await translateText(text);
+  el.classList.remove('loading');
+  if (tooltip) tooltip.textContent = result;
+  if (inline) {
+    const inlineDiv = document.getElementById('inline-' + id);
+    if (inlineDiv) {
+      inlineDiv.textContent = '🇷🇺 ' + result;
+      inlineDiv.classList.toggle('visible');
+    }
+    el.classList.toggle('active');
+  } else {
+    el.classList.add('active');
+    // Keep tooltip open
+    el.onmouseleave = () => { el.classList.remove('active'); };
+  }
+}
+
+function appendMessage({ role, html, label, labelClass, time = true, extras = '' }) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const avatarMap = { tutor: '🎓', user: 'Вы', system: 'ℹ', correction: '✏', vocab: '📚', challenge: '⭐', score: '🏆' };
+  const avatar = avatarMap[role] || '?';
+  div.innerHTML = `
+    <div class="avatar">${avatar}</div>
+    <div class="bubble-wrap">
+      ${label ? `<div class="msg-label ${labelClass || ''}">${label}</div>` : ''}
+      <div class="bubble">${html}${extras}</div>
+      ${time ? `<div class="bubble-time">${now()}</div>` : ''}
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+async function autoTranslateMessage(bubbleEl, text) {
+  if (!state.autoTranslate) return;
+  const translation = await translateText(text);
+  const div = document.createElement('div');
+  div.className = 'inline-translation visible';
+  div.textContent = '🇷🇺 ' + translation;
+  bubbleEl.appendChild(div);
+}
+
+// ============================================================
+//  TYPING INDICATOR
+// ============================================================
+function showTyping(duration = 1500) {
+  const msgs = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'msg tutor';
+  el.id = 'typing-indicator';
+  el.innerHTML = `
+    <div class="avatar">🎓</div>
+    <div class="bubble-wrap">
+      <div class="typing-bubble">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>
+    </div>`;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  return new Promise(res => setTimeout(() => { el.remove(); res(); }, duration));
+}
+
+// ============================================================
+//  PHASE TRACKER
+// ============================================================
+function setPhase(n) {
+  state.phase = n;
+  for (let i = 1; i <= 6; i++) {
+    const el = document.getElementById(`phase-${i}`);
+    if (!el) continue;
+    el.classList.remove('active', 'done');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+  }
+}
+
+// ============================================================
+//  QUICK REPLIES
+// ============================================================
+function setQuickReplies(items) {
+  const container = document.getElementById('quick-replies');
+  container.innerHTML = '';
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.className = 'qr-btn';
+    btn.textContent = item;
+    btn.onclick = () => {
+      document.getElementById('user-input').value = item;
+      sendMessage();
+    };
+    container.appendChild(btn);
+  });
+}
+
+function clearQuickReplies() {
+  document.getElementById('quick-replies').innerHTML = '';
+}
+
+// ============================================================
+//  SESSION STATS
+// ============================================================
+function updateStats() {
+  document.getElementById('stat-words').textContent = state.vocabWords.length + ' слов';
+  document.getElementById('stat-turns').textContent = state.turnCount + ' реплик';
+  document.getElementById('stat-errors').textContent = state.errors.length + ' ошибок';
+}
+
+// ============================================================
+//  VOCAB PANEL
+// ============================================================
+function addVocabWord(wordData) {
+  state.vocabWords.push(wordData);
+  updateStats();
+
+  const list = document.getElementById('vocab-list');
+  const empty = list.querySelector('.vocab-empty');
+  if (empty) empty.remove();
+
+  const card = document.createElement('div');
+  card.className = 'vocab-card';
+  const ruId = 'vru-' + Math.random().toString(36).slice(2, 8);
+  card.innerHTML = `
+    <div class="word">${wordData.word}</div>
+    <div class="word-meta">${wordData.pos}</div>
+    <div class="word-example">"${wordData.example}"</div>
+    <div class="word-translation" id="${ruId}">${wordData.ru}</div>
+    <div class="vocab-card-actions">
+      <button class="btn btn-ghost btn-sm" onclick="toggleWordTranslation('${ruId}')">🇷🇺 Перевод</button>
+    </div>`;
+  list.appendChild(card);
+}
+
+function toggleWordTranslation(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('visible');
+}
+
+function exportVocab() {
+  if (state.vocabWords.length === 0) return alert('Словарь пуст!');
+  const lines = state.vocabWords.map(w =>
+    `${w.word} (${w.pos})\n  "${w.example}"\n  → ${w.ru}\n`
+  );
+  const text = `СЛОВАРЬ СЕССИИ — SpeakUp English\n${'='.repeat(40)}\n\n${lines.join('\n')}`;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'speakup-vocab.txt';
+  a.click();
+}
+
+function toggleVocabPanel() {
+  const panel = document.getElementById('vocab-panel');
+  panel.classList.toggle('mobile-open');
+}
+
+// ============================================================
+//  SCORE DISPLAY
+// ============================================================
+function showScore(value, feedback) {
+  const card = document.getElementById('score-card');
+  card.classList.add('visible');
+  document.getElementById('final-score').textContent = value + '/10';
+  document.getElementById('score-feedback').textContent = feedback;
+  const fill = document.getElementById('score-fill');
+  fill.style.width = '0%';
+  setTimeout(() => { fill.style.width = (value * 10) + '%'; }, 100);
+  const stars = document.getElementById('star-display');
+  stars.innerHTML = '';
+  for (let i = 1; i <= 10; i++) {
+    const s = document.createElement('span');
+    s.className = 'star ' + (i <= value ? 'filled' : 'empty');
+    s.textContent = i <= value ? '★' : '☆';
+    stars.appendChild(s);
+  }
+}
+
+// ============================================================
+//  TRANSLATE ALL TOGGLE
+// ============================================================
+function toggleAutoTranslate(val) {
+  state.autoTranslate = val;
+}
+
+// ============================================================
+//  MAIN CONVERSATION ENGINE
+// ============================================================
+async function startSession() {
+  setPhase(1);
+  await showTyping(1200);
+
+  const html = `Hello! I'm your personal English tutor. 👋<br><br>
+Today we'll have a <strong>structured lesson</strong> with roleplay, corrections, new vocabulary, and a final score.<br><br>
+Please choose a topic to practise:
+${createRuButton("Hello! I'm your personal English tutor. Today we'll have a structured lesson.")}`;
+
+  const msgEl = appendMessage({ role: 'tutor', html });
+  if (state.autoTranslate) {
+    await autoTranslateMessage(msgEl.querySelector('.bubble'), "Hello! I'm your personal English tutor. Today we'll have a structured lesson with roleplay, corrections, new vocabulary, and a final score. Please choose a topic to practise.");
+  }
+
+  // Render topic cards
+  const topicHtml = `<div class="topic-grid">${TOPICS.map(t => `
+    <div class="topic-card" onclick="selectTopic('${t.id}')">
+      <div class="t-icon">${t.icon}</div>
+      <div class="t-info">
+        <div class="t-title">${t.title}</div>
+        <div class="t-desc">${t.desc}</div>
+      </div>
+      <div class="t-level">${t.level}</div>
+    </div>`).join('')}</div>`;
+
+  appendMessage({ role: 'system', html: topicHtml, time: false });
+
+  document.getElementById('user-input').disabled = true;
+  document.getElementById('send-btn').disabled = true;
+  document.getElementById('input-hint').textContent = '👆 Выберите тему выше, чтобы начать';
+}
+
+async function selectTopic(id) {
+  const topic = TOPICS.find(t => t.id === id);
+  if (!topic) return;
+  state.topic = id;
+  state.scriptIndex = 0;
+
+  // Remove topic cards
+  const systemMsgs = document.querySelectorAll('.msg.system');
+  systemMsgs[systemMsgs.length - 1]?.remove();
+
+  // User "selected"
+  appendMessage({ role: 'user', html: `${topic.icon} <strong>${topic.title}</strong> — Let's do this!` });
+  state.turnCount++;
+  updateStats();
+
+  document.getElementById('user-input').disabled = false;
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('input-hint').textContent = '💡 Отвечайте на английском — репетитор исправит ошибки';
+
+  setPhase(2);
+  const script = DEMO_SCRIPTS[id];
+
+  await showTyping(1800);
+
+  const introHtml = markdownToHtml(script.intro) + '<br>' + createRuButton(script.intro.replace(/\*\*/g,'').replace(/\*/g,'').replace(/\n/g,' '));
+  const introEl = appendMessage({ role: 'tutor', html: introHtml });
+  if (state.autoTranslate) {
+    await autoTranslateMessage(introEl.querySelector('.bubble'), script.intro.replace(/\*/g,''));
+  }
+
+  setQuickReplies(['Tell me about yourself...', 'I have experience in...', 'Thank you for the opportunity...']);
+}
+
+async function sendMessage() {
+  const input = document.getElementById('user-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  clearQuickReplies();
+
+  appendMessage({ role: 'user', html: text });
+  state.turnCount++;
+  state.userTurns.push(text);
+  updateStats();
+
+  if (state.phase === 2) {
+    await handleRoleplay(text);
+  } else if (state.phase === 5) {
+    await handleChallenge(text);
+  }
+}
+
+async function handleRoleplay(userText) {
+  const script = DEMO_SCRIPTS[state.topic];
+  const turns = script.turns;
+  const idx = state.scriptIndex;
+
+  if (idx < turns.length) {
+    const turn = turns[idx];
+    state.scriptIndex++;
+
+    await showTyping(1400 + Math.random() * 800);
+
+    const tutorHtml = markdownToHtml(turn.tutor) + '<br>' +
+      createRuButton(turn.tutor.replace(/\*\*/g,'').replace(/\*/g,'').replace(/\n/g,' '));
+    const tutorEl = appendMessage({ role: 'tutor', html: tutorHtml });
+    if (state.autoTranslate) {
+      await autoTranslateMessage(tutorEl.querySelector('.bubble'), turn.tutor.replace(/\*/g,''));
+    }
+
+    // Update hints
+    if (turn.hint) {
+      document.getElementById('input-hint').textContent = `💡 ${turn.hint}`;
+      setQuickReplies(['I would...', 'In my opinion...', 'That\'s a good point...']);
+    }
+
+    // Check if we've done enough turns — trigger corrections
+    if (state.scriptIndex >= Math.min(turns.length, state.maxTurns)) {
+      setTimeout(() => triggerCorrections(), 800);
+    }
+  }
+}
+
+async function triggerCorrections() {
+  setPhase(3);
+  const script = DEMO_SCRIPTS[state.topic];
+
+  await showTyping(2000);
+
+  const msg1 = `Great conversation! 🌟 Now let's look at some common mistakes — I've noticed a few patterns worth addressing. Don't worry, every learner makes these! ${createRuButton('Great conversation! Now let\'s look at some common mistakes.')}`;
+  const el1 = appendMessage({ role: 'tutor', html: msg1 });
+
+  for (const err of script.corrections) {
+    state.errors.push(err);
+    await showTyping(1200);
+
+    const corrHtml = `
+      <div style="margin-bottom:6px;">
+        <span style="color:var(--error);">✗ </span>
+        <span style="text-decoration:line-through;color:var(--text-dim);">${err.original}</span>
+      </div>
+      <div style="margin-bottom:8px;">
+        <span style="color:var(--success);">✓ </span>
+        <strong>${markdownToHtml(err.fixed)}</strong>
+      </div>
+      <div style="background:rgba(240,180,41,0.1);border-left:3px solid var(--gold);padding:6px 10px;border-radius:0 6px 6px 0;font-size:0.82rem;">
+        🇷🇺 ${err.ru_note}
+      </div>`;
+    appendMessage({ role: 'correction', html: corrHtml, label: '✏ РАЗБОР ОШИБКИ', labelClass: 'correction-label' });
+  }
+
+  updateStats();
+  setTimeout(() => triggerVocab(), 600);
+}
+
+async function triggerVocab() {
+  setPhase(4);
+  const script = DEMO_SCRIPTS[state.topic];
+
+  await showTyping(1500);
+
+  const intHtml = `Excellent! Now, let's build your vocabulary. Here are **3 powerful words/phrases** related to today's topic — learn these and you'll sound much more natural! ${createRuButton("Now let's build your vocabulary. Here are 3 powerful words and phrases.")}`;
+  appendMessage({ role: 'tutor', html: intHtml });
+
+  for (const word of script.vocab) {
+    await showTyping(1000);
+
+    const vocHtml = `
+      <div style="margin-bottom:4px;">
+        <strong style="color:var(--gold-light);font-size:1rem;">${word.word}</strong>
+        <span style="color:var(--text-dim);font-size:0.78rem;margin-left:6px;">${word.pos}</span>
+      </div>
+      <div style="font-style:italic;margin-bottom:6px;opacity:0.9;">"${word.example}"</div>
+      <div style="background:rgba(240,180,41,0.1);border-left:3px solid var(--gold);padding:5px 10px;font-size:0.8rem;border-radius:0 5px 5px 0;">
+        🇷🇺 ${word.ru}
+      </div>`;
+    appendMessage({ role: 'vocab', html: vocHtml, label: '📚 НОВОЕ СЛОВО', labelClass: 'vocab-label' });
+    addVocabWord(word);
+  }
+
+  setTimeout(() => triggerChallenge(), 800);
+}
+
+async function triggerChallenge() {
+  setPhase(5);
+  const script = DEMO_SCRIPTS[state.topic];
+
+  await showTyping(1800);
+
+  const chalHtml = `
+    ${markdownToHtml(script.challenge.prompt)}
+    <br><br>
+    <div style="font-size:0.8rem;color:var(--text-dim);">Type your C1-level rephrase below and press Send ↵</div>
+    ${createRuButton(script.challenge.prompt.replace(/\*\*/g,'').replace(/\*/g,'').replace(/\n/g,' '))}`;
+  appendMessage({
+    role: 'challenge',
+    html: chalHtml,
+    label: '⭐ C1 ЗАДАНИЕ — ПЕРЕФРАЗИРУЙТЕ',
+    labelClass: 'challenge-label'
+  });
+
+  document.getElementById('input-hint').textContent = '✍️ Перефразируйте предложение на уровне C1';
+  setQuickReplies(['I would describe...', 'One might argue...', 'It could be said that...']);
+  clearQuickReplies();
+  setQuickReplies(['I would describe...', 'One might argue...', 'It could be said that...']);
+}
+
+async function handleChallenge(userText) {
+  await showTyping(2000);
+
+  const script = DEMO_SCRIPTS[state.topic];
+  const html = `
+    Well done for trying! 💪 Here's an example of a strong C1 answer:
+    <br><br>
+    <div style="background:rgba(81,207,102,0.1);border-left:3px solid var(--success);padding:8px 12px;border-radius:0 8px 8px 0;font-style:italic;">
+      ${script.challenge.example_answer}
+    </div>
+    <br>
+    Compare it with yours — notice the vocabulary choices and sentence structure.
+    ${createRuButton('Well done for trying! Here is an example of a strong C1 answer. Compare it with yours.')}`;
+
+  appendMessage({ role: 'tutor', html });
+  setTimeout(() => triggerScore(), 800);
+}
+
+async function triggerScore() {
+  setPhase(6);
+  const script = DEMO_SCRIPTS[state.topic];
+
+  await showTyping(2500);
+
+  const s = script.score;
+  showScore(s.value, s.feedback);
+
+  const starsHtml = Array.from({length: 10}, (_, i) => i < s.value ? '★' : '☆').join('');
+  const scoreHtml = `
+    <div style="font-size:1.5rem;font-weight:900;color:var(--gold);margin-bottom:6px;">${s.value}/10</div>
+    <div style="font-size:1.2rem;color:var(--gold);letter-spacing:2px;margin-bottom:10px;">${starsHtml}</div>
+    <div style="color:var(--text-dim);font-size:0.85rem;margin-bottom:12px;">🇷🇺 ${s.feedback}</div>
+    <div style="font-size:0.82rem;color:var(--text);line-height:1.6;">
+      <strong style="color:var(--gold-light);">Session Summary:</strong><br>
+      • ${state.turnCount} exchanges completed<br>
+      • ${state.errors.length} grammatical errors identified<br>
+      • ${state.vocabWords.length} new words added to your vocabulary<br>
+      • 1 C1 challenge completed
+    </div>`;
+
+  appendMessage({ role: 'score', html: scoreHtml, label: '🏆 ОЦЕНКА СЕССИИ', labelClass: 'score-label' });
+
+  await showTyping(1500);
+
+  const outroHtml = `
+    Congratulations on completing today's session! 🎉
+    <br><br>
+    <strong>What to do next:</strong><br>
+    1. Export your vocabulary list and review it tonight<br>
+    2. Try using today's new words in sentences<br>
+    3. Come back tomorrow for a new topic!<br><br>
+    До следующего раза! 👋
+    ${createRuButton("Congratulations on completing today's session! Export your vocabulary list and review it tonight.")}`;
+  appendMessage({ role: 'tutor', html: outroHtml });
+
+  setQuickReplies(['Start new session', 'Try another topic']);
+  document.getElementById('input-hint').textContent = '🎓 Сессия завершена! Нажмите "Заново" чтобы начать снова.';
+  document.getElementById('user-input').disabled = true;
+  document.getElementById('send-btn').disabled = true;
+}
+
+// ============================================================
+//  RESET
+// ============================================================
+function resetSession() {
+  Object.assign(state, {
+    phase: 0, topic: null, turnCount: 0, maxTurns: 6,
+    errors: [], vocabWords: [], score: 0,
+    scriptIndex: 0, userTurns: [],
+  });
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('vocab-list').innerHTML = `<div class="vocab-empty"><div class="icon">📚</div><div>Новые слова появятся<br>здесь в процессе урока</div></div>`;
+  document.getElementById('score-card').classList.remove('visible');
+  document.getElementById('quick-replies').innerHTML = '';
+  document.getElementById('user-input').disabled = false;
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('user-input').value = '';
+  updateStats();
+  for (let i = 1; i <= 6; i++) {
+    const el = document.getElementById(`phase-${i}`);
+    if (el) { el.classList.remove('active','done'); }
+  }
+  startSession();
+}
+
+// ============================================================
+//  KEY HANDLER
+// ============================================================
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  startSession();
+});
+</script>
+</body>
+</html>

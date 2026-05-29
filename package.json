@@ -1,0 +1,25 @@
+{
+  "name": "speakup-english-tutor",
+  "version": "1.0.0",
+  "description": "Interactive English tutoring web app for Russian speakers (B1→C1). Single-file, no build tools required.",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve . -p 3000",
+    "dev": "npx live-server --port=3000 --open=index.html",
+    "preview": "open index.html"
+  },
+  "keywords": [
+    "english",
+    "tutor",
+    "language-learning",
+    "russian",
+    "b1",
+    "c1",
+    "spoken-english",
+    "esl"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {},
+  "dependencies": {}
+}
