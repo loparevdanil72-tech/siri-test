@@ -346,6 +346,46 @@
     /* ===== SCROLLBAR global ===== */
     * { scrollbar-width: thin; scrollbar-color: var(--navy-light) transparent; }
 
+    /* ===== WORD SELECTION POPUP ===== */
+    #word-popup {
+      position: fixed; z-index: 500;
+      background: var(--navy-mid); border: 1px solid var(--gold);
+      border-radius: 10px; padding: 10px 12px; min-width: 180px; max-width: 260px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      display: none; flex-direction: column; gap: 6px;
+      animation: popupIn 0.15s ease;
+    }
+    #word-popup.visible { display: flex; }
+    @keyframes popupIn { from { opacity: 0; transform: translateY(4px) scale(0.97); } to { opacity: 1; transform: none; } }
+    #word-popup .pw-word { font-weight: 700; color: var(--gold-light); font-size: 0.95rem; word-break: break-word; }
+    #word-popup .pw-translation { font-size: 0.8rem; color: var(--text-dim); min-height: 1.2em; }
+    #word-popup .pw-translation.loaded { color: var(--gold); }
+    #word-popup .pw-actions { display: flex; gap: 6px; margin-top: 2px; }
+    #word-popup .pw-add { flex: 1; font-size: 0.78rem; padding: 5px 8px; }
+    #word-popup .pw-add.added { background: rgba(81,207,102,0.15); color: var(--success); border-color: rgba(81,207,102,0.4); }
+    #word-popup .pw-close { padding: 5px 8px; font-size: 0.78rem; }
+
+    /* manual add word form */
+    #add-word-form {
+      display: none; padding: 10px 14px; gap: 6px;
+      background: var(--navy); border-bottom: 1px solid rgba(240,180,41,0.15);
+      flex-direction: column;
+    }
+    #add-word-form.visible { display: flex; }
+    #add-word-form input {
+      background: var(--navy-light); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px; padding: 7px 10px; color: var(--text);
+      font-size: 0.82rem; outline: none; font-family: inherit;
+    }
+    #add-word-form input:focus { border-color: var(--gold); }
+    #add-word-form .form-row { display: flex; gap: 6px; }
+
+    /* delete button on vocab cards */
+    .vocab-card-del { padding: 5px 8px; font-size: 0.78rem; margin-left: auto; opacity: 0.5; }
+    .vocab-card-del:hover { opacity: 1; color: var(--error); border-color: rgba(255,107,107,0.5); }
+    .vocab-card.user-added { border-color: rgba(81,207,102,0.3); }
+    .vocab-card.user-added .word::after { content: ' ✎'; font-size: 0.65rem; color: var(--success); vertical-align: super; }
+
     /* ===== PROGRESS TRACKER ===== */
     .progress-pills { display: flex; gap: 4px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .progress-pill {
@@ -427,13 +467,33 @@
     </div>
 
     <!-- VOCABULARY PANEL -->
+    <!-- WORD SELECTION POPUP -->
+    <div id="word-popup">
+      <div class="pw-word" id="pw-word-text"></div>
+      <div class="pw-translation" id="pw-translation">Загрузка перевода…</div>
+      <div class="pw-actions">
+        <button class="btn btn-ghost btn-sm pw-add" id="pw-add-btn" onclick="popupAddToVocab()">📚 В словарь</button>
+        <button class="btn btn-ghost btn-sm pw-close" onclick="closeWordPopup()">✕</button>
+      </div>
+    </div>
+
     <div id="vocab-overlay" onclick="toggleVocabPanel()"></div>
     <div id="vocab-panel">
       <div class="panel-header">
         <h3>📖 Словарь сессии</h3>
         <div style="display:flex;gap:6px;align-items:center;">
           <button class="btn btn-ghost btn-sm" onclick="exportVocab()">↓ Экспорт</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleAddWordForm()" title="Добавить слово вручную">+ Слово</button>
           <button class="panel-close-btn" onclick="toggleVocabPanel()" title="Закрыть">×</button>
+        </div>
+      </div>
+      <!-- manual add form -->
+      <div id="add-word-form">
+        <input id="awf-word" placeholder="Слово или фраза (по-английски)" />
+        <input id="awf-note" placeholder="Заметка (необязательно)" />
+        <div class="form-row">
+          <button class="btn btn-primary btn-sm" style="flex:1" onclick="submitAddWord()">Добавить</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleAddWordForm()">Отмена</button>
         </div>
       </div>
 
@@ -970,7 +1030,10 @@ function updateStats() {
 // ============================================================
 //  VOCAB PANEL
 // ============================================================
-function addVocabWord(wordData) {
+function addVocabWord(wordData, userAdded = false) {
+  // Prevent duplicates
+  if (state.vocabWords.some(w => w.word.toLowerCase() === wordData.word.toLowerCase())) return;
+
   state.vocabWords.push(wordData);
   updateStats();
 
@@ -979,18 +1042,174 @@ function addVocabWord(wordData) {
   if (empty) empty.remove();
 
   const card = document.createElement('div');
-  card.className = 'vocab-card';
+  card.className = 'vocab-card' + (userAdded ? ' user-added' : '');
   const ruId = 'vru-' + Math.random().toString(36).slice(2, 8);
+  const idx = state.vocabWords.length - 1;
   card.innerHTML = `
     <div class="word">${wordData.word}</div>
-    <div class="word-meta">${wordData.pos}${wordData.ipa ? ' · ' + wordData.ipa : ''}</div>
-    <div class="word-example">"${wordData.example}"</div>
+    <div class="word-meta">${wordData.pos || 'слово'}${wordData.ipa ? ' · ' + wordData.ipa : ''}</div>
+    <div class="word-example">${wordData.example ? '"' + wordData.example + '"' : ''}</div>
     <div class="word-translation" id="${ruId}">${wordData.ru}</div>
     <div class="vocab-card-actions">
       <button class="btn btn-ghost btn-sm" onclick="toggleWordTranslation('${ruId}')">🇷🇺 Перевод</button>
+      <button class="btn btn-ghost btn-sm vocab-card-del" onclick="removeVocabWord(this,${idx})" title="Удалить">✕</button>
     </div>`;
   list.appendChild(card);
+  saveHistory();
 }
+
+function removeVocabWord(btn, idx) {
+  const card = btn.closest('.vocab-card');
+  if (card) card.remove();
+  state.vocabWords.splice(idx, 1);
+  // Re-index remaining delete buttons
+  document.querySelectorAll('.vocab-card-del').forEach((b, i) => {
+    b.setAttribute('onclick', `removeVocabWord(this,${i})`);
+  });
+  updateStats();
+  if (state.vocabWords.length === 0) {
+    document.getElementById('vocab-list').innerHTML =
+      `<div class="vocab-empty"><div class="icon">📚</div><div>Новые слова появятся<br>здесь в процессе урока</div></div>`;
+  }
+}
+
+// ============================================================
+//  MANUAL ADD WORD FORM
+// ============================================================
+function toggleAddWordForm() {
+  const form = document.getElementById('add-word-form');
+  const visible = form.classList.toggle('visible');
+  if (visible) document.getElementById('awf-word').focus();
+}
+
+async function submitAddWord() {
+  const wordEl = document.getElementById('awf-word');
+  const noteEl = document.getElementById('awf-note');
+  const word = wordEl.value.trim();
+  if (!word) { wordEl.focus(); return; }
+
+  wordEl.disabled = noteEl.disabled = true;
+  const translation = await translateText(word);
+  wordEl.disabled = noteEl.disabled = false;
+
+  addVocabWord({
+    word,
+    pos: 'слово',
+    ipa: '',
+    example: noteEl.value.trim(),
+    ru: translation,
+  }, true);
+
+  wordEl.value = '';
+  noteEl.value = '';
+  toggleAddWordForm();
+}
+
+// ============================================================
+//  WORD SELECTION POPUP — выдели любое слово, получи перевод
+// ============================================================
+let popupState = { word: '', translation: '' };
+
+function positionPopup(popup, x, y) {
+  popup.style.left = '0px';
+  popup.style.top = '0px';
+  popup.classList.add('visible');
+  const pw = popup.offsetWidth;
+  const ph = popup.offsetHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // Place above the click, shift left if near edge
+  let left = Math.max(8, Math.min(x - pw / 2, vw - pw - 8));
+  let top = y - ph - 12;
+  if (top < 8) top = y + 18; // flip below if no space above
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+}
+
+async function showWordPopup(word, x, y) {
+  const popup = document.getElementById('word-popup');
+  const wordEl = document.getElementById('pw-word-text');
+  const transEl = document.getElementById('pw-translation');
+  const addBtn = document.getElementById('pw-add-btn');
+
+  popupState = { word, translation: '' };
+  const already = state.vocabWords.some(w => w.word.toLowerCase() === word.toLowerCase());
+
+  wordEl.textContent = word;
+  transEl.textContent = 'Загрузка…';
+  transEl.className = 'pw-translation';
+  addBtn.textContent = already ? '✓ В словаре' : '📚 В словарь';
+  addBtn.className = 'btn btn-ghost btn-sm pw-add' + (already ? ' added' : '');
+
+  positionPopup(popup, x, y);
+
+  const translation = await translateText(word);
+  popupState.translation = translation;
+  transEl.textContent = '🇷🇺 ' + translation;
+  transEl.className = 'pw-translation loaded';
+}
+
+function closeWordPopup() {
+  document.getElementById('word-popup').classList.remove('visible');
+  window.getSelection()?.removeAllRanges();
+}
+
+function popupAddToVocab() {
+  const { word, translation } = popupState;
+  if (!word) return;
+  addVocabWord({ word, pos: 'слово', ipa: '', example: '', ru: translation }, true);
+  const addBtn = document.getElementById('pw-add-btn');
+  addBtn.textContent = '✓ Добавлено!';
+  addBtn.className = 'btn btn-ghost btn-sm pw-add added';
+  setTimeout(closeWordPopup, 900);
+}
+
+// Listen for text selection on messages (desktop mouseup + mobile selectionchange)
+function getSelectionInfo() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) return null;
+  const text = sel.toString().trim();
+  if (!text || text.length > 60 || text.includes('\n')) return null;
+  // Only trigger when selection is inside the messages area
+  const anchor = sel.anchorNode?.parentElement;
+  if (!anchor?.closest('#messages')) return null;
+  try {
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    return { text, x: rect.left + rect.width / 2, y: rect.top };
+  } catch { return null; }
+}
+
+document.addEventListener('mouseup', e => {
+  if (e.target.closest('#word-popup')) return;
+  const info = getSelectionInfo();
+  if (info) { showWordPopup(info.text, info.x, info.y); return; }
+  // Click outside popup closes it
+  if (!e.target.closest('#word-popup')) closeWordPopup();
+});
+
+// Mobile: selectionchange fires when long-press selects text
+document.addEventListener('selectionchange', () => {
+  const info = getSelectionInfo();
+  if (info) showWordPopup(info.x, info.y, info.text); // positional check
+});
+// Fix arg order for selectionchange
+document.removeEventListener('selectionchange', () => {});
+document.addEventListener('selectionchange', (() => {
+  let t;
+  return () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const info = getSelectionInfo();
+      if (info) showWordPopup(info.text, info.x, info.y);
+    }, 300);
+  };
+})());
+
+// Close popup on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeWordPopup();
+});
 
 function toggleWordTranslation(id) {
   const el = document.getElementById(id);
