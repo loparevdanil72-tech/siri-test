@@ -175,6 +175,17 @@
     }
     .inline-translation.visible { display: block; }
 
+    /* action buttons row under tutor messages */
+    .msg-actions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .example-btn { color: var(--success); border-color: rgba(81,207,102,0.4); margin-left: 0; }
+    .example-btn:hover, .example-btn.active { background: var(--success); color: var(--navy); }
+    .inline-example {
+      display: none; background: rgba(81,207,102,0.1); border-left: 3px solid var(--success);
+      padding: 6px 10px; margin-top: 6px; border-radius: 0 6px 6px 0;
+      font-size: 0.82rem; color: var(--text); line-height: 1.5; font-style: italic;
+    }
+    .inline-example.visible { display: block; }
+
     /* phase-specific message decorators */
     .msg-label {
       font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
@@ -214,6 +225,8 @@
       padding: 10px 18px; border-radius: var(--radius); border: none; cursor: pointer;
       font-weight: 600; font-size: 0.88rem; transition: all 0.2s; white-space: nowrap;
     }
+    /* prevent iOS double-tap zoom on interactive elements */
+    .btn, .qr-btn, .ru-btn, .topic-card { touch-action: manipulation; }
     .btn-primary { background: var(--gold); color: var(--navy); }
     .btn-primary:hover { background: var(--gold-light); transform: translateY(-1px); }
     .btn-primary:active { transform: translateY(0); }
@@ -305,6 +318,8 @@
 
     /* ===== RESPONSIVE ===== */
     @media (max-width: 768px) {
+      /* font-size >= 16px prevents iOS Safari auto-zoom on focus */
+      #user-input { font-size: 16px; }
       #vocab-panel { display: none; }
       #vocab-panel.mobile-open {
         display: flex; position: fixed; right: 0; top: 0; bottom: 0;
@@ -450,39 +465,51 @@
 // ============================================================
 //  STATE
 // ============================================================
-const state = {
-  phase: 0,            // 0=welcome, 1=topics, 2=roleplay, 3=corrections, 4=vocab, 5=challenge, 6=score
-  topic: null,
-  turnCount: 0,
-  maxTurns: 6,
-  errors: [],
-  vocabWords: [],
-  score: 0,
-  autoTranslate: false,
-  scriptIndex: 0,
-  userTurns: [],
-  demoMode: true,
-};
+function freshState() {
+  return {
+    phase: 0,            // 0=welcome, 1=topics, 2=roleplay, 3=corrections, 4=vocab, 5=challenge, 6=score
+    topic: null,
+    turnCount: 0,
+    maxTurns: 6,
+    errors: [],
+    vocabWords: [],
+    score: 0,
+    scriptIndex: 0,
+    userTurns: [],
+    // resume markers — let an interrupted lesson continue after reload
+    corrIndex: 0,
+    vocabIndex: 0,
+    corrIntroShown: false,
+    vocabIntroShown: false,
+    correctionsStarted: false,
+    challengeShown: false,
+    challengeAnswered: false,
+    sessionComplete: false,
+    currentHint: '💡 Пишите на английском — репетитор исправит ошибки',
+    quickReplies: [],
+    demoMode: true,
+  };
+}
+
+const state = Object.assign({ autoTranslate: false }, freshState());
 
 const PHASES = ['welcome','topics','roleplay','corrections','vocab','challenge','score'];
 
 // ============================================================
 //  LOCALSTORAGE HISTORY
 // ============================================================
-const LS_KEY = 'speakup_session';
+const LS_KEY = 'speakup_session_v2';
 
 function saveHistory() {
   try {
+    // Never persist the transient typing indicator
+    const msgsClone = document.getElementById('messages').cloneNode(true);
+    msgsClone.querySelector('#typing-indicator')?.remove();
     const data = {
-      messagesHtml: document.getElementById('messages').innerHTML,
+      messagesHtml: msgsClone.innerHTML,
       vocabHtml: document.getElementById('vocab-list').innerHTML,
       scoreCardHtml: document.getElementById('score-card').outerHTML,
-      state: {
-        phase: state.phase, topic: state.topic, turnCount: state.turnCount,
-        maxTurns: state.maxTurns, errors: state.errors, vocabWords: state.vocabWords,
-        score: state.score, scriptIndex: state.scriptIndex, userTurns: state.userTurns,
-        autoTranslate: state.autoTranslate, demoMode: state.demoMode,
-      },
+      state: { ...state },
       statWords: document.getElementById('stat-words').textContent,
       statTurns: document.getElementById('stat-turns').textContent,
       statErrors: document.getElementById('stat-errors').textContent,
@@ -499,6 +526,7 @@ function loadHistory() {
     if (!data.messagesHtml) return false;
     Object.assign(state, data.state);
     document.getElementById('messages').innerHTML = data.messagesHtml;
+    document.getElementById('typing-indicator')?.remove();
     document.getElementById('vocab-list').innerHTML = data.vocabHtml;
     // Restore score card
     const sc = document.getElementById('score-card');
@@ -506,6 +534,7 @@ function loadHistory() {
     document.getElementById('stat-words').textContent = data.statWords;
     document.getElementById('stat-turns').textContent = data.statTurns;
     document.getElementById('stat-errors').textContent = data.statErrors;
+    document.getElementById('auto-translate-toggle').checked = !!state.autoTranslate;
     // Scroll to bottom
     const msgs = document.getElementById('messages');
     msgs.scrollTop = msgs.scrollHeight;
@@ -517,15 +546,29 @@ function loadHistory() {
       if (i < state.phase) el.classList.add('done');
       if (i === state.phase) el.classList.add('active');
     }
-    // Restore input state (disabled during topic selection)
-    const inputDisabled = state.phase === 1;
+    // Restore quick replies and hint
+    setQuickReplies(state.quickReplies || []);
+    document.getElementById('input-hint').textContent = state.currentHint || '💡 Отвечайте на английском';
+    // Input is locked while choosing a topic, during auto-explanations, and after the session ends
+    const inputDisabled = state.phase === 1 || state.phase === 3 || state.phase === 4 ||
+                          (state.phase === 6 && state.sessionComplete);
     document.getElementById('user-input').disabled = inputDisabled;
     document.getElementById('send-btn').disabled = inputDisabled;
-    document.getElementById('input-hint').textContent = inputDisabled
-      ? '👆 Выберите тему выше, чтобы начать'
-      : '💡 Отвечайте на английском — репетитор исправит ошибки';
+    // Continue an interrupted lesson from where it stopped
+    setTimeout(resumeFlow, 700);
     return true;
   } catch(e) { return false; }
+}
+
+function resumeFlow() {
+  // Saved mid-welcome before topic cards rendered — start over cleanly
+  if (state.phase === 1 && !document.querySelector('.topic-grid')) { resetSession(); return; }
+  if (state.phase === 2 && state.correctionsStarted) triggerCorrections();
+  else if (state.phase === 3) triggerCorrections();
+  else if (state.phase === 4) triggerVocab();
+  else if (state.phase === 5 && state.challengeAnswered) triggerScore();
+  else if (state.phase === 5 && !state.challengeShown) triggerChallenge();
+  else if (state.phase === 6 && !state.sessionComplete) triggerScore();
 }
 
 // ============================================================
@@ -558,31 +601,39 @@ const TOPICS = [
 const DEMO_SCRIPTS = {
   interview: {
     intro: `Welcome! Today we'll practice for a **job interview** in English. This is fantastic for your career! 🎯\n\nI'll be the interviewer — you are applying for a **Marketing Manager** position at an international company.\n\nRemember: speak confidently, use complex sentences, and avoid filler words. Let's begin!\n\n*"Please, take a seat. Tell me — can you walk me through your professional background?"*`,
+    intro_hint_ru: 'Расскажите о своём опыте: где работали, чем занимались, какие навыки получили',
+    intro_starters: ['I have worked in ... for ... years', 'I started my career as a ...', 'Currently I am responsible for ...'],
+    intro_example: `I've been working in digital marketing for about five years. I started as a content specialist, and now I lead a small team that runs social media campaigns for international clients.`,
     turns: [
       {
-        trigger_contains: null,
         tutor: `Interesting! I'd love to hear more about that. What would you say is your **greatest professional achievement** so far? Try to use the STAR method — Situation, Task, Action, Result.`,
-        hint: 'Tell me about a specific achievement'
+        hint_ru: 'Опишите конкретное достижение по схеме STAR: ситуация → задача → действия → результат',
+        starters: ['In my previous role, we faced ...', 'My task was to ...', 'As a result, we achieved ...'],
+        example: `In my previous company, our sales were falling. My task was to attract new clients through social media. I created a new content strategy and launched targeted ads. As a result, we got 30% more leads in just three months.`,
       },
       {
-        trigger_contains: null,
         tutor: `That's a compelling example. Now, every candidate has weaknesses. What's yours — and more importantly, what are you doing to improve it?\n\n*Don't say "I work too hard" — we've heard that one before!* 😄`,
-        hint: 'Mention a real weakness and how you\'re working on it'
+        hint_ru: 'Назовите реальную слабость и расскажите, как вы над ней работаете',
+        starters: ['One area I am working on is ...', 'I used to struggle with ...', 'To improve this, I ...'],
+        example: `Honestly, I used to struggle with public speaking. To improve this, I joined a speaking club last year, and now I feel much more confident presenting to large groups.`,
       },
       {
-        trigger_contains: null,
         tutor: `Excellent self-awareness! Let me give you a tricky one now.\n\n*"Imagine your team disagrees with your marketing strategy. Two colleagues are quite vocal about it. How do you handle that situation?"*\n\nThink carefully — this tests your leadership and communication skills.`,
-        hint: 'Describe how you handle conflict professionally'
+        hint_ru: 'Объясните, как вы решаете конфликт: выслушать → обсудить → найти общее решение',
+        starters: ['First, I would listen to ...', 'I believe open discussion ...', 'We could find a compromise by ...'],
+        example: `First, I would listen carefully to their concerns — maybe they see a risk I missed. Then I would suggest a meeting where we compare both approaches with real data and choose the best solution together.`,
       },
       {
-        trigger_contains: null,
         tutor: `That shows maturity! One more — this is a question many candidates struggle with:\n\n*"Where do you see yourself in five years? How does this role fit into that vision?"*`,
-        hint: 'Share your career goals and connect them to this role'
+        hint_ru: 'Расскажите о карьерных целях и свяжите их с этой должностью',
+        starters: ['In five years, I see myself ...', 'My long-term goal is ...', 'This role would help me ...'],
+        example: `In five years, I see myself leading a larger marketing team and developing strategy at a regional level. This role is a perfect step towards that goal, because it offers both leadership experience and international projects.`,
       },
       {
-        trigger_contains: null,
         tutor: `Wonderful! You've done a great job so far. Last question: *"Do you have any questions for us?"*\n\nRemember — asking good questions shows genuine interest. Ask at least two!`,
-        hint: 'Ask the interviewer 2 meaningful questions'
+        hint_ru: 'Задайте минимум два вопроса: о команде, задачах, развитии или культуре компании',
+        starters: ['Could you tell me more about ...?', 'What does success look like in ...?', 'How would you describe the team ...?'],
+        example: `Yes, I have two questions. First, what would success look like in this role after six months? And second, could you tell me more about the team I would be working with?`,
       },
     ],
     corrections: [
@@ -591,44 +642,52 @@ const DEMO_SCRIPTS = {
       { original: 'I am agree with you', fixed: 'I **agree** with you', ru_note: '«Agree» — обычный глагол, не прилагательное. Не нужен глагол «to be».' },
     ],
     vocab: [
-      { word: 'to spearhead', pos: 'verb', example: 'I spearheaded the rebranding campaign that increased sales by 40%.', ru: 'возглавлять, быть инициатором' },
-      { word: 'stakeholder', pos: 'noun', example: 'We need to align all stakeholders before launching the product.', ru: 'заинтересованная сторона' },
-      { word: 'cross-functional', pos: 'adjective', example: 'I enjoy working in cross-functional teams across different departments.', ru: 'межфункциональный, кросс-функциональный' },
+      { word: 'to spearhead', pos: 'verb', ipa: '/ˈspɪəhed/', example: 'I spearheaded the rebranding campaign that increased sales by 40%.', ru: 'возглавлять, быть инициатором' },
+      { word: 'stakeholder', pos: 'noun', ipa: '/ˈsteɪkˌhəʊldə/', example: 'We need to align all stakeholders before launching the product.', ru: 'заинтересованная сторона' },
+      { word: 'cross-functional', pos: 'adjective', ipa: '/ˌkrɒsˈfʌŋkʃənəl/', example: 'I enjoy working in cross-functional teams across different departments.', ru: 'межфункциональный, кросс-функциональный' },
     ],
     challenge: {
       prompt: `Rephrase this sentence to sound more **C1 professional**:\n\n*"I think I am good at my job and people like working with me."*`,
       example_answer: `"I would describe myself as a results-driven professional who consistently fosters collaborative relationships and delivers measurable outcomes."`,
     },
-    score: { value: 8, feedback: 'Отличная работа! Вы уверенно держались в роли кандидата. Над артиклями ещё стоит поработать.' },
+    score: { value: 8, feedback: 'Отличная работа! Вы уверенно держались в роли кандидата.', improve: 'Фокус на следующий урок: артикли (a/the) и предлоги времени — for/since/in.' },
   },
 
   travel: {
     intro: `Let's practice travel English! ✈️\n\nScenario: You've just landed at **London Heathrow**. Your luggage hasn't arrived, and you need to get to your hotel. I'll play different characters: airport staff, taxi driver, and hotel receptionist.\n\nReady? Let's start at the baggage claim desk.\n\n*"Good afternoon! How can I help you today?"*`,
+    intro_hint_ru: 'Сообщите о потерянном багаже: с какого вы рейса, как выглядит чемодан',
+    intro_starters: ['Good afternoon. I\'m afraid my luggage ...', 'I just arrived on flight ...', 'My suitcase is ...'],
+    intro_example: `Good afternoon. I'm afraid my luggage hasn't arrived. I was on flight SU 2578 from Moscow. It's a large red suitcase with a white ribbon on the handle.`,
     turns: [
       {
-        trigger_contains: null,
         tutor: `Oh, I'm so sorry to hear that! Could you please fill in this form?\n\nI need: your **flight number**, the **description of your bag**, and a **contact address** where we can send it.\n\nBy the way — is this your first time visiting London?`,
-        hint: 'Report missing luggage with details'
+        hint_ru: 'Назовите номер рейса, опишите чемодан, оставьте адрес отеля — и ответьте на вопрос о Лондоне',
+        starters: ['My flight number is ...', 'It\'s a ... suitcase with ...', 'You can send it to my hotel: ...'],
+        example: `Of course. My flight number is BA 233. It's a medium-sized black suitcase with a red name tag. Please send it to The Crown Hotel, 15 Park Lane. And yes, it's actually my first time in London!`,
       },
       {
-        trigger_contains: null,
         tutor: `We'll do our best to locate it within 24 hours. Here's your reference number: BA-7742.\n\n*[Now you're outside, looking for a taxi]*\n\n*Taxi driver:* "Where to, mate? And would you prefer the motorway or the scenic route through the city?"`,
-        hint: 'Tell the driver your destination and ask about the fare'
+        hint_ru: 'Назовите адрес и спросите, сколько стоит каждый маршрут',
+        starters: ['Could you take me to ...?', 'How much would it cost ...?', 'Which route do you recommend ...?'],
+        example: `Could you take me to The Crown Hotel on Park Lane, please? How much would each route cost? If the difference is small, I'd love to see a bit of the city.`,
       },
       {
-        trigger_contains: null,
         tutor: `*"The motorway's quicker — about 45 minutes. But the city route? You'll see Big Ben, the Thames… classic London! Your call."*\n\nAlso — do you want to pay cash or card? And shall I help with your carry-on?`,
-        hint: 'Make a choice and ask about the price difference'
+        hint_ru: 'Выберите маршрут, скажите, как будете платить, и ответьте про багаж',
+        starters: ['Let\'s take the ... route', 'I\'ll pay by ...', 'Yes, please — could you help me with ...?'],
+        example: `Let's take the scenic route then — I'd love to see Big Ben! I'll pay by card, if that's okay. And yes, some help with my bag would be great, thank you.`,
       },
       {
-        trigger_contains: null,
         tutor: `*[Arriving at the hotel — receptionist speaking]*\n\n"Welcome to The Crown Hotel! Do you have a reservation with us? And I should let you know — we have a slight issue. Your room won't be ready for another hour. We do apologise. Can I offer you a complimentary drink in the bar?"`,
-        hint: 'Check in and respond to the room delay situation'
+        hint_ru: 'Подтвердите бронь (фамилия), вежливо отреагируйте на задержку, примите или отклоните напиток',
+        starters: ['I have a reservation under the name ...', 'That\'s a bit inconvenient, but ...', 'Could you keep my luggage ...?'],
+        example: `Good evening. I have a reservation under the name Ivanov. Well, that's a bit inconvenient, but I understand. A complimentary drink sounds lovely — and could you keep my luggage somewhere safe in the meantime?`,
       },
       {
-        trigger_contains: null,
         tutor: `"Of course! I've made a note. Oh, and one more thing — breakfast is served from 7 to 10 AM in the dining room on the second floor. Do you have any dietary requirements I should note for tomorrow?"\n\n*This is your last chance to ask questions or request anything!*`,
-        hint: 'Make any final requests or ask about hotel amenities'
+        hint_ru: 'Сообщите о пищевых предпочтениях и задайте вопросы об отеле: Wi-Fi, спортзал, поздний выезд',
+        starters: ['I don\'t eat ...', 'Could I ask about ...?', 'Is it possible to arrange ...?'],
+        example: `Thank you! I don't eat seafood, so please note that. Could I also ask — is there a gym in the hotel? And is late check-out possible on Sunday?`,
       },
     ],
     corrections: [
@@ -637,44 +696,52 @@ const DEMO_SCRIPTS = {
       { original: 'The hotel is very noise', fixed: 'The hotel is very **noisy**', ru_note: '«Noise» — существительное. Прилагательное — «noisy».' },
     ],
     vocab: [
-      { word: 'to lodge a complaint', pos: 'phrase', example: 'I need to lodge a complaint about my missing luggage.', ru: 'подать жалобу' },
-      { word: 'complimentary', pos: 'adjective', example: 'The hotel offered complimentary breakfast to apologise for the inconvenience.', ru: 'бесплатный, предоставленный в подарок' },
-      { word: 'in transit', pos: 'phrase', example: 'Your bag is currently in transit and should arrive within 24 hours.', ru: 'в пути, при перевозке' },
+      { word: 'to lodge a complaint', pos: 'phrase', ipa: '/lɒdʒ ə kəmˈpleɪnt/', example: 'I need to lodge a complaint about my missing luggage.', ru: 'подать жалобу' },
+      { word: 'complimentary', pos: 'adjective', ipa: '/ˌkɒmplɪˈmentəri/', example: 'The hotel offered complimentary breakfast to apologise for the inconvenience.', ru: 'бесплатный, предоставленный в подарок' },
+      { word: 'in transit', pos: 'phrase', ipa: '/ɪn ˈtrænzɪt/', example: 'Your bag is currently in transit and should arrive within 24 hours.', ru: 'в пути, при перевозке' },
     ],
     challenge: {
       prompt: `Rephrase this sentence to sound more **C1 polished**:\n\n*"I am angry because my room is not ready and nobody told me."*`,
       example_answer: `"I must say I'm somewhat frustrated — had I been informed in advance about the delay, I could have made alternative arrangements."`,
     },
-    score: { value: 7, feedback: 'Очень хорошо! Вы справились с нестандартными ситуациями. Поработайте над вежливыми конструкциями в речи.' },
+    score: { value: 7, feedback: 'Очень хорошо! Вы справились с нестандартными ситуациями.', improve: 'Фокус на следующий урок: вежливые конструкции — Could you…, I\'d appreciate…, Would you mind…' },
   },
 
   restaurant: {
     intro: `Excellent choice! 🍽️ Let's practice restaurant English.\n\nScenario: You're at **La Bella Vita**, an upscale Italian restaurant in London. It's your first visit and you want to impress a business client.\n\nI'm your waiter. The evening has just begun!\n\n*"Good evening, and welcome to La Bella Vita! Do you have a reservation, or are you looking for a table for this evening?"*`,
+    intro_hint_ru: 'Скажите, что у вас бронь (имя, время, количество человек) — или попросите столик',
+    intro_starters: ['Good evening. I have a reservation under ...', 'We\'d like a table for two ...', 'Is it possible to sit by ...?'],
+    intro_example: `Good evening! I have a reservation under the name Petrov, for two people at seven o'clock. If possible, we'd prefer a quieter table — we have some business to discuss.`,
     turns: [
       {
-        trigger_contains: null,
         tutor: `*"Wonderful! Right this way, please. Here are your menus. Tonight's specials are: seared sea bass with a lemon beurre blanc, and truffle risotto.*\n\n*Can I start you off with something to drink? We have a lovely Barolo if you're interested in red wine."*`,
-        hint: 'Order drinks and ask about the specials or make a special request'
+        hint_ru: 'Закажите напитки и спросите подробнее о фирменных блюдах',
+        starters: ['The Barolo sounds wonderful ...', 'Could you tell me more about ...?', 'We\'ll also have a bottle of ...'],
+        example: `The Barolo sounds wonderful — we'll take a bottle. Could you tell me more about the sea bass? And we'd also like a bottle of still water for the table, please.`,
       },
       {
-        trigger_contains: null,
         tutor: `*"Excellent choice! Are you ready to order, or shall I give you a few more minutes?"*\n\n*[Your client whispers that they're vegetarian — you forgot to mention this when booking]*\n\nHow do you handle this gracefully and ask the waiter about vegetarian options?`,
-        hint: 'Inform the waiter about dietary requirements politely'
+        hint_ru: 'Вежливо сообщите, что ваш гость — вегетарианец, и попросите совета',
+        starters: ['I do apologise — I forgot to mention ...', 'My colleague is vegetarian ...', 'What would you recommend for ...?'],
+        example: `I do apologise — I completely forgot to mention this when booking. My guest is vegetarian. What would you recommend? Are there any dishes without meat or fish that are particularly good tonight?`,
       },
       {
-        trigger_contains: null,
         tutor: `*"Not to worry at all! We have several wonderful vegetarian options. The wild mushroom tagliatelle is particularly popular, and the burrata with heritage tomatoes is divine as a starter.*\n\n*Now, the truffle risotto is also vegetarian — would that interest your guest?"*`,
-        hint: 'Order for both yourself and your client'
+        hint_ru: 'Закажите блюда для себя и для гостя: закуска + основное блюдо',
+        starters: ['My guest will have ...', 'I\'ll go for ...', 'Could we also share ...?'],
+        example: `Perfect — my guest will have the burrata to start and then the truffle risotto. I'll go for the sea bass, please. Could we also share a green salad?`,
       },
       {
-        trigger_contains: null,
         tutor: `*[The food arrives, but there's a problem: your client's dish is cold and the portion looks smaller than expected]*\n\n*Waiter: "Is everything to your satisfaction?"*\n\nHow do you raise this issue politely without embarrassing your client?`,
-        hint: 'Complain politely about the food issue'
+        hint_ru: 'Вежливо, но твёрдо сообщите о проблеме с блюдом и попросите заменить',
+        starters: ['Excuse me, I\'m afraid ...', 'Would you mind ...?', 'Could we have this ...?'],
+        example: `Excuse me — I'm afraid there's a small problem. My guest's dish has arrived cold. Would you mind taking it back and bringing a fresh one? Thank you so much.`,
       },
       {
-        trigger_contains: null,
         tutor: `*"I sincerely apologise for that. I'll have a fresh dish prepared immediately, and of course we'll remove it from the bill.*\n\n*[After a lovely meal, the bill arrives — and there's an extra charge you don't recognise]*\n\nHow do you query this on the bill?`,
-        hint: 'Question an unexpected charge on the bill'
+        hint_ru: 'Спросите о непонятной позиции в счёте — вежливо, без обвинений',
+        starters: ['Could you check this for me ...?', 'I don\'t recognise this charge ...', 'There seems to be ...'],
+        example: `Everything was delicious, thank you. Just one thing — could you check this item on the bill for me? There seems to be a charge here that I don't recognise. What is it for, exactly?`,
       },
     ],
     corrections: [
@@ -683,15 +750,15 @@ const DEMO_SCRIPTS = {
       { original: 'Can you explain me the bill?', fixed: 'Can you **explain** the bill **to me**?', ru_note: '«Explain» не принимает косвенное дополнение напрямую. Нужен предлог «to»: explain something to someone.' },
     ],
     vocab: [
-      { word: 'to query', pos: 'verb', example: 'I\'d like to query this charge on the bill — I don\'t recognise it.', ru: 'поставить под сомнение, уточнить' },
-      { word: 'to the satisfaction of', pos: 'phrase', example: 'We want everything to be to your complete satisfaction.', ru: 'к чьему-либо удовлетворению / по чьему-либо вкусу' },
-      { word: 'on the house', pos: 'idiom', example: 'The manager offered us dessert on the house to apologise for the wait.', ru: 'за счёт заведения' },
+      { word: 'to query', pos: 'verb', ipa: '/ˈkwɪəri/', example: 'I\'d like to query this charge on the bill — I don\'t recognise it.', ru: 'поставить под сомнение, уточнить' },
+      { word: 'to the satisfaction of', pos: 'phrase', ipa: '/ˌsætɪsˈfækʃən/', example: 'We want everything to be to your complete satisfaction.', ru: 'к чьему-либо удовлетворению / по чьему-либо вкусу' },
+      { word: 'on the house', pos: 'idiom', ipa: '/ɒn ðə haʊs/', example: 'The manager offered us dessert on the house to apologise for the wait.', ru: 'за счёт заведения' },
     ],
     challenge: {
       prompt: `Rephrase this sentence to sound more **C1 sophisticated**:\n\n*"I think the bill is wrong. There is something extra here that I didn't order."*`,
       example_answer: `"I believe there may be a discrepancy on the bill — there appears to be a charge here that I can't account for. Could you clarify that for me?"`,
     },
-    score: { value: 9, feedback: 'Превосходно! Вы мастерски справились с деликатными ситуациями. Ваш уровень вежливости в речи значительно вырос.' },
+    score: { value: 9, feedback: 'Превосходно! Вы мастерски справились с деликатными ситуациями.', improve: 'Фокус на следующий урок: порядок слов с enough (hot enough) и конструкция explain something to someone.' },
   },
 };
 
@@ -737,11 +804,43 @@ function markdownToHtml(text) {
     .replace(/\n/g, '<br>');
 }
 
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function createRuButton(textToTranslate) {
   const id = 'ru-' + Math.random().toString(36).slice(2, 8);
   return `<span class="ru-btn" id="${id}" onclick="handleTranslateBtn('${id}', this)"
-    data-text="${encodeURIComponent(textToTranslate)}">RU</span
+    data-text="${encodeURIComponent(textToTranslate)}">🇷🇺 Перевод</span
   ><div class="inline-translation" id="inline-${id}"></div>`;
+}
+
+// Buttons row under a tutor message: translate + optional model answer
+function msgButtons(translateSrc, exampleText) {
+  const rid = 'ru-' + Math.random().toString(36).slice(2, 8);
+  const clean = translateSrc.replace(/\*\*/g, '').replace(/\*/g, '').replace(/\n/g, ' ');
+  let h = `<div class="msg-actions"><span class="ru-btn" id="${rid}" onclick="handleTranslateBtn('${rid}', this)" data-text="${encodeURIComponent(clean)}">🇷🇺 Перевод</span>`;
+  let tail = `<div class="inline-translation" id="inline-${rid}"></div>`;
+  if (exampleText) {
+    const eid = 'ex-' + Math.random().toString(36).slice(2, 8);
+    h += `<span class="ru-btn example-btn" onclick="toggleExample('${eid}', this)">💬 Пример ответа</span>`;
+    tail += `<div class="inline-example" id="${eid}">📝 ${escapeHtml(exampleText)}</div>`;
+  }
+  return h + '</div>' + tail;
+}
+
+function toggleExample(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const vis = el.classList.toggle('visible');
+  btn.classList.toggle('active', vis);
+  saveHistory();
+}
+
+function setHint(text) {
+  state.currentHint = text;
+  document.getElementById('input-hint').textContent = text;
+  saveHistory();
 }
 
 async function handleTranslateBtn(id, el) {
@@ -790,6 +889,7 @@ async function autoTranslateMessage(bubbleEl, text) {
   div.className = 'inline-translation visible';
   div.textContent = '🇷🇺 ' + translation;
   bubbleEl.appendChild(div);
+  saveHistory();
 }
 
 // ============================================================
@@ -832,22 +932,29 @@ function setPhase(n) {
 //  QUICK REPLIES
 // ============================================================
 function setQuickReplies(items) {
+  state.quickReplies = items || [];
   const container = document.getElementById('quick-replies');
   container.innerHTML = '';
-  items.forEach(item => {
+  state.quickReplies.forEach(item => {
+    const isObj = typeof item === 'object' && item !== null;
     const btn = document.createElement('button');
     btn.className = 'qr-btn';
-    btn.textContent = item;
+    btn.textContent = isObj ? item.label : item;
     btn.onclick = () => {
-      document.getElementById('user-input').value = item;
-      sendMessage();
+      if (isObj && item.action === 'reset') { resetSession(); return; }
+      // Sentence starters fill the input for the student to complete — not auto-send
+      const input = document.getElementById('user-input');
+      input.value = isObj ? item.label : item;
+      autoGrow(input);
+      input.focus();
     };
     container.appendChild(btn);
   });
+  saveHistory();
 }
 
 function clearQuickReplies() {
-  document.getElementById('quick-replies').innerHTML = '';
+  setQuickReplies([]);
 }
 
 // ============================================================
@@ -876,7 +983,7 @@ function addVocabWord(wordData) {
   const ruId = 'vru-' + Math.random().toString(36).slice(2, 8);
   card.innerHTML = `
     <div class="word">${wordData.word}</div>
-    <div class="word-meta">${wordData.pos}</div>
+    <div class="word-meta">${wordData.pos}${wordData.ipa ? ' · ' + wordData.ipa : ''}</div>
     <div class="word-example">"${wordData.example}"</div>
     <div class="word-translation" id="${ruId}">${wordData.ru}</div>
     <div class="vocab-card-actions">
@@ -893,7 +1000,7 @@ function toggleWordTranslation(id) {
 function exportVocab() {
   if (state.vocabWords.length === 0) return alert('Словарь пуст!');
   const lines = state.vocabWords.map(w =>
-    `${w.word} (${w.pos})\n  "${w.example}"\n  → ${w.ru}\n`
+    `${w.word} (${w.pos}${w.ipa ? ', ' + w.ipa : ''})\n  "${w.example}"\n  → ${w.ru}\n`
   );
   const text = `СЛОВАРЬ СЕССИИ — SpeakUp English\n${'='.repeat(40)}\n\n${lines.join('\n')}`;
   const blob = new Blob([text], { type: 'text/plain' });
@@ -901,6 +1008,7 @@ function exportVocab() {
   a.href = URL.createObjectURL(blob);
   a.download = 'speakup-vocab.txt';
   a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 function toggleVocabPanel() {
@@ -955,6 +1063,12 @@ ${createRuButton("Hello! I'm your personal English tutor. Today we'll have a str
     await autoTranslateMessage(msgEl.querySelector('.bubble'), "Hello! I'm your personal English tutor. Today we'll have a structured lesson with roleplay, corrections, new vocabulary, and a final score. Please choose a topic to practise.");
   }
 
+  // Russian onboarding — so every student understands how the lesson works
+  const onboardHtml = `🇷🇺 <strong>Как проходит урок:</strong><br>
+1️⃣ Выберите тему → 2️⃣ Диалог на английском (6 реплик) → 3️⃣ Разбор ошибок на русском → 4️⃣ Три новых слова → 5️⃣ Задание уровня C1 → 6️⃣ Оценка и рекомендации<br><br>
+Не знаете, что ответить? Нажмите <strong>💬 Пример ответа</strong> под сообщением репетитора или используйте фразы-заготовки над полем ввода. Кнопка <strong>🇷🇺 Перевод</strong> переводит любое сообщение.`;
+  appendMessage({ role: 'system', html: onboardHtml, time: false });
+
   // Render topic cards
   const topicHtml = `<div class="topic-grid">${TOPICS.map(t => `
     <div class="topic-card" onclick="selectTopic('${t.id}')">
@@ -970,12 +1084,13 @@ ${createRuButton("Hello! I'm your personal English tutor. Today we'll have a str
 
   document.getElementById('user-input').disabled = true;
   document.getElementById('send-btn').disabled = true;
-  document.getElementById('input-hint').textContent = '👆 Выберите тему выше, чтобы начать';
+  setHint('👆 Выберите тему выше, чтобы начать');
 }
 
 async function selectTopic(id) {
   const topic = TOPICS.find(t => t.id === id);
   if (!topic) return;
+  if (state.phase !== 1) return; // ignore stray clicks on restored topic cards
   state.topic = id;
   state.scriptIndex = 0;
 
@@ -990,24 +1105,24 @@ async function selectTopic(id) {
 
   document.getElementById('user-input').disabled = false;
   document.getElementById('send-btn').disabled = false;
-  document.getElementById('input-hint').textContent = '💡 Отвечайте на английском — репетитор исправит ошибки';
 
   setPhase(2);
   const script = DEMO_SCRIPTS[id];
 
   await showTyping(1800);
 
-  const introHtml = markdownToHtml(script.intro) + '<br>' + createRuButton(script.intro.replace(/\*\*/g,'').replace(/\*/g,'').replace(/\n/g,' '));
-  const introEl = appendMessage({ role: 'tutor', html: introHtml });
+  const introEl = appendMessage({ role: 'tutor', html: markdownToHtml(script.intro) + msgButtons(script.intro, script.intro_example) });
   if (state.autoTranslate) {
     await autoTranslateMessage(introEl.querySelector('.bubble'), script.intro.replace(/\*/g,''));
   }
 
-  setQuickReplies(['Tell me about yourself...', 'I have experience in...', 'Thank you for the opportunity...']);
+  setHint('💡 ' + (script.intro_hint_ru || 'Отвечайте на английском — репетитор исправит ошибки'));
+  setQuickReplies(script.intro_starters || []);
 }
 
 async function sendMessage() {
   const input = document.getElementById('user-input');
+  if (input.disabled) return;
   const text = input.value.trim();
   if (!text) return;
 
@@ -1015,7 +1130,7 @@ async function sendMessage() {
   input.style.height = 'auto';
   clearQuickReplies();
 
-  appendMessage({ role: 'user', html: text });
+  appendMessage({ role: 'user', html: escapeHtml(text) });
   state.turnCount++;
   state.userTurns.push(text);
   updateStats();
@@ -1032,42 +1147,57 @@ async function handleRoleplay(userText) {
   const turns = script.turns;
   const idx = state.scriptIndex;
 
-  if (idx < turns.length) {
-    const turn = turns[idx];
-    state.scriptIndex++;
-
-    await showTyping(1400 + Math.random() * 800);
-
-    const tutorHtml = markdownToHtml(turn.tutor) + '<br>' +
-      createRuButton(turn.tutor.replace(/\*\*/g,'').replace(/\*/g,'').replace(/\n/g,' '));
-    const tutorEl = appendMessage({ role: 'tutor', html: tutorHtml });
-    if (state.autoTranslate) {
-      await autoTranslateMessage(tutorEl.querySelector('.bubble'), turn.tutor.replace(/\*/g,''));
+  // The student has just answered the FINAL question — wrap up and move to corrections
+  if (idx >= turns.length) {
+    if (!state.correctionsStarted) {
+      state.correctionsStarted = true;
+      document.getElementById('user-input').disabled = true;
+      document.getElementById('send-btn').disabled = true;
+      clearQuickReplies();
+      await showTyping(1400);
+      const ack = `Thank you — that was a great conversation! 🎉 You completed the full roleplay.\n\nNow let's move on to the most useful part: reviewing your mistakes.`;
+      const ackEl = appendMessage({ role: 'tutor', html: markdownToHtml(ack) + msgButtons(ack) });
+      if (state.autoTranslate) {
+        await autoTranslateMessage(ackEl.querySelector('.bubble'), ack.replace(/\n/g, ' '));
+      }
+      setTimeout(() => triggerCorrections(), 900);
     }
-
-    // Update hints
-    if (turn.hint) {
-      document.getElementById('input-hint').textContent = `💡 ${turn.hint}`;
-      setQuickReplies(['I would...', 'In my opinion...', 'That\'s a good point...']);
-    }
-
-    // Check if we've done enough turns — trigger corrections
-    if (state.scriptIndex >= Math.min(turns.length, state.maxTurns)) {
-      setTimeout(() => triggerCorrections(), 800);
-    }
+    return;
   }
+
+  const turn = turns[idx];
+  state.scriptIndex++;
+
+  await showTyping(1400 + Math.random() * 800);
+
+  const tutorEl = appendMessage({ role: 'tutor', html: markdownToHtml(turn.tutor) + msgButtons(turn.tutor, turn.example) });
+  if (state.autoTranslate) {
+    await autoTranslateMessage(tutorEl.querySelector('.bubble'), turn.tutor.replace(/\*/g,''));
+  }
+
+  setHint('💡 ' + (turn.hint_ru || ''));
+  setQuickReplies(turn.starters || []);
 }
 
 async function triggerCorrections() {
   setPhase(3);
   const script = DEMO_SCRIPTS[state.topic];
+  document.getElementById('user-input').disabled = true;
+  document.getElementById('send-btn').disabled = true;
+  clearQuickReplies();
+  setHint('👀 Изучите разбор ошибок — урок продолжится автоматически');
 
-  await showTyping(2000);
+  if (!state.corrIntroShown) {
+    state.corrIntroShown = true;
+    await showTyping(2000);
+    const msg1 = `Great conversation! 🌟 Now let's look at some common mistakes Russian speakers make in this situation. Don't worry, every learner makes these! ${createRuButton('Great conversation! Now let\'s look at some common mistakes.')}`;
+    appendMessage({ role: 'tutor', html: msg1 });
+  }
 
-  const msg1 = `Great conversation! 🌟 Now let's look at some common mistakes — I've noticed a few patterns worth addressing. Don't worry, every learner makes these! ${createRuButton('Great conversation! Now let\'s look at some common mistakes.')}`;
-  const el1 = appendMessage({ role: 'tutor', html: msg1 });
-
-  for (const err of script.corrections) {
+  // Resumable loop: corrIndex survives a page reload
+  for (let i = state.corrIndex; i < script.corrections.length; i++) {
+    const err = script.corrections[i];
+    state.corrIndex = i + 1;
     state.errors.push(err);
     await showTyping(1200);
 
@@ -1093,19 +1223,27 @@ async function triggerCorrections() {
 async function triggerVocab() {
   setPhase(4);
   const script = DEMO_SCRIPTS[state.topic];
+  document.getElementById('user-input').disabled = true;
+  document.getElementById('send-btn').disabled = true;
+  setHint('📚 Запоминайте новые слова — они сохраняются в словарь справа');
 
-  await showTyping(1500);
+  if (!state.vocabIntroShown) {
+    state.vocabIntroShown = true;
+    await showTyping(1500);
+    const intHtml = `Excellent! Now, let's build your vocabulary. Here are **3 powerful words/phrases** related to today's topic — learn these and you'll sound much more natural! ${createRuButton("Now let's build your vocabulary. Here are 3 powerful words and phrases.")}`;
+    appendMessage({ role: 'tutor', html: intHtml });
+  }
 
-  const intHtml = `Excellent! Now, let's build your vocabulary. Here are **3 powerful words/phrases** related to today's topic — learn these and you'll sound much more natural! ${createRuButton("Now let's build your vocabulary. Here are 3 powerful words and phrases.")}`;
-  appendMessage({ role: 'tutor', html: intHtml });
-
-  for (const word of script.vocab) {
+  // Resumable loop: vocabIndex survives a page reload
+  for (let i = state.vocabIndex; i < script.vocab.length; i++) {
+    const word = script.vocab[i];
+    state.vocabIndex = i + 1;
     await showTyping(1000);
 
     const vocHtml = `
       <div style="margin-bottom:4px;">
         <strong style="color:var(--gold-light);font-size:1rem;">${word.word}</strong>
-        <span style="color:var(--text-dim);font-size:0.78rem;margin-left:6px;">${word.pos}</span>
+        <span style="color:var(--text-dim);font-size:0.78rem;margin-left:6px;">${word.pos}${word.ipa ? ' · ' + word.ipa : ''}</span>
       </div>
       <div style="font-style:italic;margin-bottom:6px;opacity:0.9;">"${word.example}"</div>
       <div style="background:rgba(240,180,41,0.1);border-left:3px solid var(--gold);padding:5px 10px;font-size:0.8rem;border-radius:0 5px 5px 0;">
@@ -1120,6 +1258,7 @@ async function triggerVocab() {
 
 async function triggerChallenge() {
   setPhase(5);
+  state.challengeShown = true;
   const script = DEMO_SCRIPTS[state.topic];
 
   await showTyping(1800);
@@ -1127,7 +1266,7 @@ async function triggerChallenge() {
   const chalHtml = `
     ${markdownToHtml(script.challenge.prompt)}
     <br><br>
-    <div style="font-size:0.8rem;color:var(--text-dim);">Type your C1-level rephrase below and press Send ↵</div>
+    <div style="font-size:0.8rem;color:var(--text-dim);">🇷🇺 Перепишите это предложение «по-взрослому»: сложные конструкции, вежливый тон, богатая лексика. Напишите свой вариант и нажмите Отправить ↵</div>
     ${createRuButton(script.challenge.prompt.replace(/\*\*/g,'').replace(/\*/g,'').replace(/\n/g,' '))}`;
   appendMessage({
     role: 'challenge',
@@ -1136,13 +1275,16 @@ async function triggerChallenge() {
     labelClass: 'challenge-label'
   });
 
-  document.getElementById('input-hint').textContent = '✍️ Перефразируйте предложение на уровне C1';
-  setQuickReplies(['I would describe...', 'One might argue...', 'It could be said that...']);
-  clearQuickReplies();
-  setQuickReplies(['I would describe...', 'One might argue...', 'It could be said that...']);
+  document.getElementById('user-input').disabled = false;
+  document.getElementById('send-btn').disabled = false;
+  setHint('✍️ Перефразируйте предложение на уровне C1 — не бойтесь ошибиться, вы увидите образец');
+  setQuickReplies(['I would describe...', 'One might argue that...', 'I must say that...']);
 }
 
 async function handleChallenge(userText) {
+  state.challengeAnswered = true;
+  document.getElementById('user-input').disabled = true;
+  document.getElementById('send-btn').disabled = true;
   await showTyping(2000);
 
   const script = DEMO_SCRIPTS[state.topic];
@@ -1174,6 +1316,7 @@ async function triggerScore() {
     <div style="font-size:1.5rem;font-weight:900;color:var(--gold);margin-bottom:6px;">${s.value}/10</div>
     <div style="font-size:1.2rem;color:var(--gold);letter-spacing:2px;margin-bottom:10px;">${starsHtml}</div>
     <div style="color:var(--text-dim);font-size:0.85rem;margin-bottom:12px;">🇷🇺 ${s.feedback}</div>
+    ${s.improve ? `<div style="background:rgba(240,180,41,0.1);border-left:3px solid var(--gold);padding:6px 10px;border-radius:0 6px 6px 0;font-size:0.82rem;text-align:left;margin-bottom:12px;">🎯 ${s.improve}</div>` : ''}
     <div style="font-size:0.82rem;color:var(--text);line-height:1.6;">
       <strong style="color:var(--gold-light);">Session Summary:</strong><br>
       • ${state.turnCount} exchanges completed<br>
@@ -1197,8 +1340,9 @@ async function triggerScore() {
     ${createRuButton("Congratulations on completing today's session! Export your vocabulary list and review it tonight.")}`;
   appendMessage({ role: 'tutor', html: outroHtml });
 
-  setQuickReplies(['Start new session', 'Try another topic']);
-  document.getElementById('input-hint').textContent = '🎓 Сессия завершена! Нажмите "Заново" чтобы начать снова.';
+  state.sessionComplete = true;
+  setQuickReplies([{ label: '🔄 Начать новую сессию', action: 'reset' }]);
+  setHint('🎓 Сессия завершена! Выберите новую тему — повторение лучший учитель.');
   document.getElementById('user-input').disabled = true;
   document.getElementById('send-btn').disabled = true;
 }
@@ -1207,11 +1351,7 @@ async function triggerScore() {
 //  RESET
 // ============================================================
 function resetSession() {
-  Object.assign(state, {
-    phase: 0, topic: null, turnCount: 0, maxTurns: 6,
-    errors: [], vocabWords: [], score: 0,
-    scriptIndex: 0, userTurns: [],
-  });
+  Object.assign(state, freshState()); // autoTranslate is intentionally preserved
   localStorage.removeItem(LS_KEY);
   document.getElementById('messages').innerHTML = '';
   document.getElementById('vocab-list').innerHTML = `<div class="vocab-empty"><div class="icon">📚</div><div>Новые слова появятся<br>здесь в процессе урока</div></div>`;

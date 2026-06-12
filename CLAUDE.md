@@ -51,8 +51,19 @@ npx live-server --port=3000 --open=index.html
 
 ### Vocabulary Panel
 - Right sidebar (desktop) auto-populates with words learned each session
-- Each card shows: word, part of speech, example sentence, Russian translation toggle
+- Each card shows: word, part of speech, IPA transcription, example sentence, Russian translation toggle
 - "Export" button downloads a `.txt` file of all session words
+
+### Learner Support (B1-friendly)
+- Every roleplay question has a **Russian hint** under the input field
+- **💬 Пример ответа** button under each tutor question reveals a model answer
+- **Sentence starters** (quick-reply chips) fill the input field for the student to complete — they do not auto-send
+- Russian onboarding message on the welcome screen explains the lesson structure
+
+### Session Persistence
+- Full chat history, vocabulary, stats, and lesson position are saved to `localStorage` (key `speakup_session_v2`) on every message
+- Reloading the page restores the session and **resumes** interrupted auto-phases (corrections/vocab/challenge/score) via `resumeFlow()`
+- "Заново" button clears saved history and starts fresh
 
 ## Code Structure
 
@@ -67,18 +78,22 @@ index.html
 │   ├── #input-area     Textarea + Send button + quick replies
 │   └── #vocab-panel    Right sidebar vocabulary tracker
 └── <script>
-    ├── state{}         Session state object
+    ├── freshState()    Factory for default session state
+    ├── state{}         Session state object (incl. resume markers)
+    ├── saveHistory()/loadHistory()  localStorage persistence
+    ├── resumeFlow()    Continues an interrupted lesson after reload
     ├── TOPICS[]        Topic metadata
     ├── DEMO_SCRIPTS{}  Full scripted flows for 3 topics
     ├── translateText() MyMemory API call with caching
-    ├── startSession()  Entry point — renders welcome + topic cards
+    ├── msgButtons()    Translate + model-answer buttons under tutor messages
+    ├── startSession()  Entry point — welcome + RU onboarding + topic cards
     ├── selectTopic()   Begins roleplay phase
     ├── sendMessage()   Dispatches user input
     ├── handleRoleplay()    Advances scripted dialogue
-    ├── triggerCorrections() Phase 3 — shows errors
-    ├── triggerVocab()       Phase 4 — shows new words
+    ├── triggerCorrections() Phase 3 — shows errors (resumable)
+    ├── triggerVocab()       Phase 4 — shows new words (resumable)
     ├── triggerChallenge()   Phase 5 — C1 rephrase task
-    ├── triggerScore()       Phase 6 — final score display
+    ├── triggerScore()       Phase 6 — score + improvement focus
     └── resetSession()  Full reset to welcome state
 ```
 
@@ -100,11 +115,12 @@ index.html
 1. Add an entry to the `TOPICS` array with `id`, `icon`, `title`, `desc`, `level`
 2. Add a matching key to `DEMO_SCRIPTS` with:
    - `intro` — opening tutor message (supports `**bold**` and `*italic*`)
-   - `turns[]` — array of `{ trigger_contains, tutor, hint }` objects (5–6 turns)
+   - `intro_hint_ru` / `intro_starters[]` / `intro_example` — Russian hint, sentence starters, and model answer for the intro question
+   - `turns[]` — array of `{ tutor, hint_ru, starters[], example }` objects (5 turns)
    - `corrections[]` — array of `{ original, fixed, ru_note }` (2–4 errors)
-   - `vocab[]` — array of `{ word, pos, example, ru }` (exactly 3)
+   - `vocab[]` — array of `{ word, pos, ipa, example, ru }` (exactly 3)
    - `challenge` — `{ prompt, example_answer }`
-   - `score` — `{ value (1–10), feedback (Russian string) }`
+   - `score` — `{ value (1–10), feedback (Russian), improve (Russian — focus for next lesson) }`
 
 ### Connecting a Real AI Backend
 Replace `handleRoleplay()` with a `fetch()` call to your API endpoint.
